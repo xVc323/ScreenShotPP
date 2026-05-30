@@ -31,7 +31,7 @@ pub fn run() {
             tray::build_tray(app)?;
 
             let settings = settings::Settings::default();
-            hotkey::register_capture_shortcut(&app.handle(), &settings.capture_shortcut)?;
+            hotkey::register_capture_shortcut(app.handle(), &settings.capture_shortcut)?;
             Ok(())
         })
         .run(tauri::generate_context!())
