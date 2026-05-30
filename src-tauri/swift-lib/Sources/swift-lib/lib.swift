@@ -9,7 +9,7 @@ public func ocr_recognize(_ data: SRData) -> SRString {
     let cfData = Data(data.toArray()) as CFData
     guard let source = CGImageSourceCreateWithData(cfData, nil),
           let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
-        return SRString("")
+        return response(error: "Image OCR invalide")
     }
     let request = VNRecognizeTextRequest()
     request.recognitionLevel = .accurate
@@ -21,10 +21,19 @@ public func ocr_recognize(_ data: SRData) -> SRString {
     do {
         try handler.perform([request])
     } catch {
-        return SRString("")
+        return response(error: "Reconnaissance OCR échouée: \(error.localizedDescription)")
     }
     let lines: [String] = (request.results ?? []).compactMap { observation in
         observation.topCandidates(1).first?.string
     }
-    return SRString(lines.joined(separator: "\n"))
+    return response(text: lines.joined(separator: "\n"))
+}
+
+private func response(text: String? = nil, error: String? = nil) -> SRString {
+    let object = text.map { ["text": $0] } ?? ["error": error ?? "Erreur OCR inconnue"]
+    guard let data = try? JSONSerialization.data(withJSONObject: object),
+          let json = String(data: data, encoding: .utf8) else {
+        return SRString("{\"error\":\"Réponse OCR invalide\"}")
+    }
+    return SRString(json)
 }
