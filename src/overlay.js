@@ -1,4 +1,5 @@
 import { createEditor } from "./editor/editor.js";
+import { createColorPicker } from "./color-picker.js";
 
 const { invoke } = window.__TAURI__.core;
 const dialog = window.__TAURI__.dialog;
@@ -7,8 +8,6 @@ const toolbar = document.getElementById("toolbar");
 const thickness = document.getElementById("thickness");
 const fontsize = document.getElementById("fontsize");
 const customColor = document.getElementById("custom-color");
-const savedColor = localStorage.getItem("customColor");
-if (savedColor) customColor.value = savedColor;
 const undoButton = document.getElementById("undo");
 const redoButton = document.getElementById("redo");
 const copyButton = document.getElementById("copy-btn");
@@ -132,12 +131,15 @@ document.querySelectorAll(".swatch").forEach((button, index) => {
     customColor.classList.remove("active");
   });
 });
-customColor.addEventListener("input", (event) => {
-  const value = event.target.value;
-  if (editor) editor.setColor(value);
-  localStorage.setItem("customColor", value);
-  document.querySelectorAll(".swatch").forEach((swatch) => swatch.classList.remove("active"));
-  customColor.classList.add("active");
+const colorPicker = createColorPicker({
+  button: customColor,
+  initialHex: localStorage.getItem("customColor") || "#ff8800",
+  onChange: (hex) => {
+    if (editor) editor.setColor(hex);
+    localStorage.setItem("customColor", hex);
+    document.querySelectorAll(".swatch").forEach((swatch) => swatch.classList.remove("active"));
+    customColor.classList.add("active");
+  },
 });
 thickness.addEventListener("change", (event) => {
   if (!editor) return;
