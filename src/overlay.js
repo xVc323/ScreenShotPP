@@ -8,6 +8,10 @@ const toolbar = document.getElementById("toolbar");
 const thickness = document.getElementById("thickness");
 const fontsize = document.getElementById("fontsize");
 const customColor = document.getElementById("custom-color");
+const outputSize = document.getElementById("output-size");
+const savedSize = localStorage.getItem("outputSize");
+if (savedSize) outputSize.value = savedSize;
+outputSize.addEventListener("change", () => localStorage.setItem("outputSize", outputSize.value));
 const undoButton = document.getElementById("undo");
 const redoButton = document.getElementById("redo");
 const copyButton = document.getElementById("copy-btn");
@@ -156,7 +160,7 @@ async function doCopy() {
   if (busy || !editor?.hasSelection()) return;
   setBusy(true);
   try {
-    await invoke("copy_composited", { pngBase64: editor.exportPngBase64() });
+    await invoke("copy_composited", { pngBase64: editor.exportPngBase64(), target: outputSize.value });
   } catch (error) {
     console.error("Copy failed:", error);
     window.alert("Copy failed: " + error);
@@ -174,7 +178,8 @@ async function doSave() {
   if (busy || !editor?.hasSelection()) return;
   setBusy(true);
   try {
-    const suggested = await invoke("default_save_name", { format: "png" });
+    const target = outputSize.value;
+    const suggested = await invoke("default_save_name", { format: target === "full" ? "png" : "jpeg" });
     const path = await dialog.save({
       defaultPath: suggested,
       filters: [
@@ -184,8 +189,15 @@ async function doSave() {
     });
     if (!path) return;
     const lower = path.toLowerCase();
-    const format = lower.endsWith(".jpg") || lower.endsWith(".jpeg") ? "jpeg" : "png";
-    await invoke("save_composited", { pngBase64: editor.exportPngBase64(), path, format });
+    let finalPath = path;
+    let format;
+    if (target === "full") {
+      format = lower.endsWith(".jpg") || lower.endsWith(".jpeg") ? "jpeg" : "png";
+    } else {
+      format = "jpeg";
+      if (!(lower.endsWith(".jpg") || lower.endsWith(".jpeg"))) finalPath = path + ".jpg";
+    }
+    await invoke("save_composited", { pngBase64: editor.exportPngBase64(), path: finalPath, format, target });
   } catch (error) {
     console.error("Save failed:", error);
     window.alert("Save failed: " + error);
