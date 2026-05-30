@@ -1,5 +1,6 @@
 import { createEditor } from "./editor/editor.js";
 import { createColorPicker } from "./color-picker.js";
+import { isEditableTarget, shouldCloseOcrPanel } from "./editable-target.js";
 
 const { invoke } = window.__TAURI__.core;
 const dialog = window.__TAURI__.dialog;
@@ -14,6 +15,10 @@ if (savedSize) outputSize.value = savedSize;
 outputSize.addEventListener("change", () => localStorage.setItem("outputSize", outputSize.value));
 const undoButton = document.getElementById("undo");
 const redoButton = document.getElementById("redo");
+const ocrBtn = document.getElementById("ocr-btn");
+const ocrPanel = document.getElementById("ocr-panel");
+const ocrText = document.getElementById("ocr-text");
+const ocrCopy = document.getElementById("ocr-copy");
 const copyButton = document.getElementById("copy-btn");
 const saveButton = document.getElementById("save-btn");
 let editor = null;
@@ -65,6 +70,8 @@ function setBusy(value) {
   busy = value;
   copyButton.disabled = value;
   saveButton.disabled = value;
+  ocrBtn.disabled = value;
+  ocrCopy.disabled = value;
 }
 
 // Place la barre d'outils par défaut juste sous la sélection ; s'il n'y a pas
@@ -156,6 +163,41 @@ fontsize.addEventListener("change", (event) => {
 undoButton.addEventListener("click", () => editor?.undo());
 redoButton.addEventListener("click", () => editor?.redo());
 
+ocrBtn.addEventListener("click", async () => {
+  if (busy || !editor?.hasSelection()) return;
+  const rect = editor.selectionPhysicalRect();
+  if (!rect) return;
+  setBusy(true);
+  ocrBtn.textContent = "OCR…";
+  try {
+    const text = await invoke("ocr_region", { rect });
+    ocrText.value = text || "";
+    ocrPanel.hidden = false;
+    ocrText.focus();
+  } catch (error) {
+    console.error("OCR failed:", error);
+    window.alert("OCR failed: " + error);
+  } finally {
+    setBusy(false);
+    ocrBtn.textContent = "OCR";
+  }
+});
+document.getElementById("ocr-close").addEventListener("click", () => { ocrPanel.hidden = true; });
+ocrCopy.addEventListener("click", async () => {
+  if (busy) return;
+  setBusy(true);
+  try {
+    await invoke("copy_text", { text: ocrText.value });
+    ocrPanel.hidden = true;
+    await invoke("cancel_capture");
+  } catch (error) {
+    console.error("Copy text failed:", error);
+    window.alert("Copy text failed: " + error);
+  } finally {
+    setBusy(false);
+  }
+});
+
 async function doCopy() {
   if (busy || !editor?.hasSelection()) return;
   setBusy(true);
@@ -208,6 +250,14 @@ async function doSave() {
 }
 
 window.addEventListener("keydown", async (event) => {
+  if (shouldCloseOcrPanel(event, ocrPanel.hidden)) {
+    event.preventDefault();
+    ocrPanel.hidden = true;
+    return;
+  }
+  if (isEditableTarget(event.target)) {
+    return;
+  }
   const key = event.key.toLowerCase();
   const commandKey = event.metaKey || event.ctrlKey;
 

@@ -4,6 +4,7 @@ dist/
 dist-ssr
 src-tauri/target/
 src-tauri/gen/
+src-tauri/swift-lib/.build/
 
 # Compagnon visuel brainstorming
 .superpowers/

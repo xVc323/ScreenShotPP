@@ -119,6 +119,27 @@ pub fn default_save_name(format: String) -> String {
     storage::current_filename(storage::SaveFormat::from_str(&format))
 }
 
+#[tauri::command]
+pub async fn ocr_region(app: AppHandle, rect: capture::Rect) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<CaptureState>();
+        let cropped = {
+            let guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
+            let img = guard.as_ref().ok_or("Aucune capture en cours")?;
+            capture::crop_region(img, rect)
+        };
+        crate::ocr::recognize(&cropped)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn copy_text(app: AppHandle, text: String) -> Result<(), String> {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    app.clipboard().write_text(text).map_err(|e| e.to_string())
+}
+
 /// Ferme l'overlay (annulation depuis l'interface).
 #[tauri::command]
 pub fn cancel_capture(app: AppHandle) {
