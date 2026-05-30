@@ -5,7 +5,7 @@ import CoreGraphics
 import ImageIO
 
 @_cdecl("ocr_recognize")
-public func ocr_recognize(_ data: SRData) -> SRString {
+public func ocr_recognize(_ data: SRData, _ langs: SRString) -> SRString {
     let cfData = Data(data.toArray()) as CFData
     guard let source = CGImageSourceCreateWithData(cfData, nil),
           let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
@@ -14,8 +14,13 @@ public func ocr_recognize(_ data: SRData) -> SRString {
     let request = VNRecognizeTextRequest()
     request.recognitionLevel = .accurate
     request.usesLanguageCorrection = true
-    if #available(macOS 13.0, *) {
-        request.automaticallyDetectsLanguage = true
+    let langValue = langs.toString()
+    if langValue == "auto" {
+        if #available(macOS 13.0, *) {
+            request.automaticallyDetectsLanguage = true
+        }
+    } else {
+        request.recognitionLanguages = langValue.split(separator: ",").map(String.init)
     }
     let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
     do {
