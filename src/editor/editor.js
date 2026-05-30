@@ -1,6 +1,7 @@
 import { History } from "./history.js";
 
 const MIN_SIZE = 2;
+const FONT_FAMILY = "Arial";
 const RESIZE_ANCHORS = ["top-left", "top-center", "top-right", "middle-right", "bottom-right", "bottom-center", "bottom-left", "middle-left"];
 
 /** Crée l'éditeur d'annotations Konva plein écran. */
@@ -23,8 +24,10 @@ export function createEditor(o = {}) {
   let tool = "select";
   let color = o.color || "#ff0000";
   let strokeWidth = positiveNumber(o.strokeWidth, 3);
+  let fontSize = positiveNumber(o.fontSize, 24);
   let selectionDraft = null;
   let annotationDraft = null;
+  let activeText = null;
   let start = null;
   let nextId = 1;
 
@@ -55,6 +58,10 @@ export function createEditor(o = {}) {
       selectNode(event.target);
       return;
     }
+    if (tool === "text") {
+      if (insideSelection(point)) openTextEditor(clampToSelection(point));
+      return;
+    }
     if (!insideSelection(point)) return;
 
     start = clampToSelection(point);
@@ -80,7 +87,12 @@ export function createEditor(o = {}) {
     }
 
     if (selection && annotationDraft) {
-      updateDraftDescriptor(annotationDraft.descriptor, start, clampToSelection(rawPoint));
+      const point = clampToSelection(rawPoint);
+      if (annotationDraft.descriptor.type === "free") {
+        annotationDraft.descriptor.points.push(point.x, point.y);
+      } else {
+        updateDraftDescriptor(annotationDraft.descriptor, start, point);
+      }
       applyDescriptor(annotationDraft.node, annotationDraft.descriptor);
       annotationLayer.batchDraw();
     }
@@ -129,6 +141,7 @@ export function createEditor(o = {}) {
   }
 
   function cancelDraft() {
+    discardText();
     annotationDraft?.node.destroy();
     annotationDraft = null;
     selectionDraft = null;
@@ -167,6 +180,7 @@ export function createEditor(o = {}) {
     if (kind === "rect") return { ...common, x: point.x, y: point.y, width: 0, height: 0 };
     if (kind === "ellipse") return { ...common, x: point.x, y: point.y, radiusX: 0, radiusY: 0 };
     if (kind === "line" || kind === "arrow") return { ...common, x: 0, y: 0, points: [point.x, point.y, point.x, point.y] };
+    if (kind === "free") return { ...common, x: 0, y: 0, points: [point.x, point.y] };
     return null;
   }
 
@@ -183,6 +197,8 @@ export function createEditor(o = {}) {
     else if (descriptor.type === "ellipse") node = new Konva.Ellipse({ ...common, x: descriptor.x, y: descriptor.y, radiusX: descriptor.radiusX, radiusY: descriptor.radiusY });
     else if (descriptor.type === "line") node = new Konva.Line({ ...common, x: descriptor.x, y: descriptor.y, points: descriptor.points });
     else if (descriptor.type === "arrow") node = new Konva.Arrow({ ...common, x: descriptor.x, y: descriptor.y, points: descriptor.points });
+    else if (descriptor.type === "free") node = new Konva.Line({ ...common, x: descriptor.x, y: descriptor.y, points: descriptor.points, tension: 0.4, lineCap: "round", lineJoin: "round" });
+    else if (descriptor.type === "text") node = new Konva.Text({ id: descriptor.id, x: descriptor.x, y: descriptor.y, text: descriptor.text, fill: descriptor.fill, fontSize: descriptor.fontSize, fontFamily: FONT_FAMILY, draggable: tool === "select" });
     else throw new Error(`Type d'annotation inconnu: ${descriptor.type}`);
     node.dragBoundFunc((position) => boundDragPosition(node, position));
     return node;
@@ -269,6 +285,8 @@ export function createEditor(o = {}) {
     } else if (descriptor.type === "ellipse") {
       descriptor.radiusX = node.radiusX();
       descriptor.radiusY = node.radiusY();
+    } else if (descriptor.type === "text") {
+      // x/y déjà synchronisés ; texte et taille inchangés
     } else {
       descriptor.points = [...node.points()];
     }
@@ -277,6 +295,13 @@ export function createEditor(o = {}) {
   function isDegenerate(descriptor) {
     if (descriptor.type === "rect") return descriptor.width < MIN_SIZE || descriptor.height < MIN_SIZE;
     if (descriptor.type === "ellipse") return descriptor.radiusX * 2 < MIN_SIZE || descriptor.radiusY * 2 < MIN_SIZE;
+    if (descriptor.type === "text") return !descriptor.text || descriptor.text.trim() === "";
+    if (descriptor.type === "free") {
+      let length = 0;
+      const p = descriptor.points;
+      for (let i = 2; i < p.length; i += 2) length += Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]);
+      return length < MIN_SIZE;
+    }
     return Math.hypot(descriptor.points[2] - descriptor.points[0], descriptor.points[3] - descriptor.points[1]) < MIN_SIZE;
   }
 
@@ -335,9 +360,73 @@ export function createEditor(o = {}) {
     return point.x >= selection.x && point.x <= selection.x + selection.width && point.y >= selection.y && point.y <= selection.y + selection.height;
   }
 
+  // Ouvre un <textarea> HTML temporaire au point cliqué pour la saisie sur place.
+  function openTextEditor(point) {
+    commitText();
+    const textarea = document.createElement("textarea");
+    Object.assign(textarea.style, {
+      position: "fixed",
+      left: `${point.x}px`,
+      top: `${point.y}px`,
+      margin: "0",
+      padding: "0",
+      border: "none",
+      outline: "none",
+      background: "transparent",
+      color,
+      font: `${fontSize}px ${FONT_FAMILY}`,
+      lineHeight: "1",
+      whiteSpace: "pre",
+      overflow: "hidden",
+      resize: "none",
+      zIndex: "20",
+    });
+    document.body.appendChild(textarea);
+    activeText = { textarea, point };
+    const autoSize = () => {
+      textarea.style.height = "auto";
+      textarea.style.height = `${textarea.scrollHeight}px`;
+      textarea.style.width = "auto";
+      textarea.style.width = `${textarea.scrollWidth + 4}px`;
+    };
+    textarea.addEventListener("input", autoSize);
+    textarea.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" || (event.key === "Enter" && (event.metaKey || event.ctrlKey))) {
+        event.preventDefault();
+        commitText();
+      }
+    });
+    textarea.addEventListener("blur", commitText);
+    setTimeout(() => {
+      textarea.focus();
+      autoSize();
+    }, 0);
+  }
+
+  // Valide la saisie en cours : retire le textarea et pose un Konva.Text si non vide.
+  function commitText() {
+    if (!activeText) return;
+    const { textarea, point } = activeText;
+    const value = textarea.value;
+    activeText = null;
+    textarea.remove();
+    const text = value.replace(/\s+$/u, "");
+    if (!text.trim()) return;
+    annotations.push({ id: `annotation-${nextId++}`, type: "text", x: point.x, y: point.y, text, fill: color, fontSize });
+    renderAnnotations();
+    saveHistory();
+  }
+
+  // Abandonne la saisie en cours sans rien poser.
+  function discardText() {
+    if (!activeText) return;
+    activeText.textarea.remove();
+    activeText = null;
+  }
+
   return {
     setTool(value) {
-      if (!["select", "rect", "ellipse", "line", "arrow"].includes(value)) throw new Error(`Outil inconnu: ${value}`);
+      if (!["select", "rect", "ellipse", "line", "arrow", "free", "text"].includes(value)) throw new Error(`Outil inconnu: ${value}`);
       tool = value;
       if (tool !== "select") transformer.nodes([]);
       shapeGroup.getChildren().forEach((node) => node.draggable(tool === "select"));
@@ -345,9 +434,11 @@ export function createEditor(o = {}) {
     },
     setColor(value) { color = value; },
     setStrokeWidth(value) { strokeWidth = positiveNumber(value, strokeWidth); },
+    setFontSize(value) { fontSize = positiveNumber(value, fontSize); },
     undo() { cancelDraft(); restore(history.undo()); notifyHistory(); },
     redo() { cancelDraft(); restore(history.redo()); notifyHistory(); },
     exportPngBase64() {
+      commitText();
       cancelDraft();
       if (!selection) return null;
       const transformerVisible = transformer.visible();
@@ -365,6 +456,7 @@ export function createEditor(o = {}) {
     },
     hasSelection() { return selection !== null; },
     destroy() {
+      discardText();
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("pointerup", finishPointer);
       window.removeEventListener("pointercancel", cancelDraft);
