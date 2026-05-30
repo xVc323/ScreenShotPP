@@ -1,4 +1,5 @@
 use image::RgbaImage;
+#[cfg(target_os = "macos")]
 use serde::Deserialize;
 
 #[cfg(target_os = "macos")]
@@ -27,9 +28,81 @@ fn recognize_png(png: &[u8], lang: &str) -> Result<String, String> {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(windows)]
+pub fn recognize(img: &RgbaImage, lang: &str) -> Result<String, String> {
+    let png = crate::storage::encode_image(img, crate::storage::SaveFormat::Png)?;
+    windows_impl::recognize_png(&png, lang)
+}
+
+#[cfg(all(not(target_os = "macos"), not(windows)))]
 pub fn recognize(_img: &RgbaImage, _lang: &str) -> Result<String, String> {
     Err("OCR pas encore disponible sur cette plateforme".to_string())
+}
+
+#[cfg(windows)]
+mod windows_impl {
+    use windows::core::HSTRING;
+    use windows::Globalization::Language;
+    use windows::Graphics::Imaging::{
+        BitmapAlphaMode, BitmapDecoder, BitmapPixelFormat, SoftwareBitmap,
+    };
+    use windows::Media::Ocr::OcrEngine;
+    use windows::Storage::Streams::{DataWriter, InMemoryRandomAccessStream};
+    use windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
+
+    pub(super) fn recognize_png(png: &[u8], lang: &str) -> Result<String, String> {
+        // Apartment COM (MTA) pour ce thread ; ignore « déjà initialisé ».
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        }
+
+        let stream = InMemoryRandomAccessStream::new().map_err(err)?;
+        let writer = DataWriter::CreateDataWriter(&stream).map_err(err)?;
+        writer.WriteBytes(png).map_err(err)?;
+        writer.StoreAsync().map_err(err)?.get().map_err(err)?;
+        writer.FlushAsync().map_err(err)?.get().map_err(err)?;
+        writer.DetachStream().ok();
+        stream.Seek(0).map_err(err)?;
+
+        let decoder = BitmapDecoder::CreateAsync(&stream)
+            .map_err(err)?
+            .get()
+            .map_err(err)?;
+        let decoded = decoder
+            .GetSoftwareBitmapAsync()
+            .map_err(err)?
+            .get()
+            .map_err(err)?;
+        let bitmap = SoftwareBitmap::ConvertWithAlpha(
+            &decoded,
+            BitmapPixelFormat::Bgra8,
+            BitmapAlphaMode::Premultiplied,
+        )
+        .map_err(err)?;
+
+        let engine = create_engine(lang)?;
+        let result = engine
+            .RecognizeAsync(&bitmap)
+            .map_err(err)?
+            .get()
+            .map_err(err)?;
+        Ok(result.Text().map_err(err)?.to_string())
+    }
+
+    fn create_engine(lang: &str) -> Result<OcrEngine, String> {
+        if lang == "auto" {
+            return OcrEngine::TryCreateFromUserProfileLanguages().map_err(err);
+        }
+        let language = Language::CreateLanguage(&HSTRING::from(lang)).map_err(err)?;
+        match OcrEngine::TryCreateFromLanguage(&language) {
+            Ok(engine) => Ok(engine),
+            Err(_) => OcrEngine::TryCreateFromUserProfileLanguages().map_err(err),
+        }
+    }
+
+    fn err<E: std::fmt::Display>(e: E) -> String {
+        format!("OCR Windows: {e}")
+    }
 }
 
 #[cfg(target_os = "macos")]
