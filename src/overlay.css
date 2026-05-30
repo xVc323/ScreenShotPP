@@ -1,14 +1,24 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 .overlay-body { overflow: hidden; cursor: crosshair; user-select: none; background: #000; }
-#shot { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: fill; }
-#dim { position: fixed; inset: 0; width: 100vw; height: 100vh; }
+#stage { position: fixed; inset: 0; width: 100vw; height: 100vh; }
 .toolbar {
-  position: fixed; display: flex; gap: 6px; padding: 6px;
-  background: #161b22; border: 1px solid #30363d; border-radius: 8px; z-index: 10;
+  position: fixed; top: 0; left: 0;
+  display: flex; align-items: center; gap: 6px; padding: 7px 9px;
+  background: #161b22; border: 1px solid #30363d; border-radius: 9px; z-index: 10;
 }
 .toolbar.hidden { display: none; }
-.toolbar button {
-  background: #21262d; color: #e6edf3; border: 1px solid #30363d;
-  border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 13px;
+.drag-handle {
+  cursor: move; color: #8b949e; font-size: 16px; line-height: 1;
+  padding: 0 4px; align-self: center; user-select: none; touch-action: none;
 }
-.toolbar button:hover { background: #30363d; }
+.drag-handle:hover { color: #e6edf3; }
+.toolbar button, .toolbar select {
+  background: #21262d; color: #e6edf3; border: 1px solid #30363d;
+  border-radius: 6px; min-width: 30px; height: 30px; cursor: pointer; font-size: 14px;
+}
+.toolbar button:disabled { cursor: default; opacity: 0.45; }
+.toolbar button.active { outline: 2px solid #4da3ff; }
+.toolbar .swatch { width: 22px; min-width: 22px; height: 22px; border-radius: 50%; padding: 0; }
+.toolbar .swatch.active { outline: 2px solid #fff; }
+.toolbar #copy-btn, .toolbar #save-btn, .toolbar #cancel-btn { padding: 0 12px; }
+.sep { width: 1px; height: 22px; background: #30363d; margin: 0 4px; }

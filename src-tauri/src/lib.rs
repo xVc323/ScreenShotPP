@@ -17,8 +17,8 @@ pub fn run() {
         .manage(CaptureState::default())
         .invoke_handler(tauri::generate_handler![
             commands::get_capture_data_url,
-            commands::copy_selection,
-            commands::save_selection,
+            commands::copy_composited,
+            commands::save_composited,
             commands::default_save_name,
             commands::cancel_capture,
         ])
@@ -31,7 +31,7 @@ pub fn run() {
             tray::build_tray(app)?;
 
             let settings = settings::Settings::default();
-            hotkey::register_capture_shortcut(&app.handle(), &settings.capture_shortcut)?;
+            hotkey::register_capture_shortcut(app.handle(), &settings.capture_shortcut)?;
             Ok(())
         })
         .run(tauri::generate_context!())

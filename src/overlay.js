@@ -1,103 +1,159 @@
+import { createEditor } from "./editor/editor.js";
+
 const { invoke } = window.__TAURI__.core;
 const dialog = window.__TAURI__.dialog;
 
-const img = document.getElementById("shot");
-const canvas = document.getElementById("dim");
-const ctx = canvas.getContext("2d");
 const toolbar = document.getElementById("toolbar");
+const thickness = document.getElementById("thickness");
+const undoButton = document.getElementById("undo");
+const redoButton = document.getElementById("redo");
+const copyButton = document.getElementById("copy-btn");
+const saveButton = document.getElementById("save-btn");
+let editor = null;
+let busy = false;
 
-let start = null;     // point de départ en pixels CSS
-let selection = null; // { x, y, w, h } en pixels CSS
-let scale = 1;        // pixels physiques par pixel CSS
+undoButton.disabled = true;
+redoButton.disabled = true;
 
-const dataUrl = await invoke("get_capture_data_url");
-img.src = dataUrl;
-img.onload = () => {
-  resizeCanvas();
-  scale = img.naturalWidth / img.clientWidth;
-  drawDim();
-};
+(async function init() {
+  try {
+    const dataUrl = await invoke("get_capture_data_url");
+    const image = await loadImage(dataUrl);
+    const scale = image.naturalWidth / window.innerWidth;
+    editor = createEditor({
+      container: "stage",
+      image,
+      scale,
+      color: document.querySelector(".swatch.active").dataset.color,
+      strokeWidth: parseInt(thickness.value, 10),
+      onSelectionDone: (selection) => positionAndShowToolbar(selection),
+      onHistoryChange: ({ canUndo, canRedo }) => {
+        undoButton.disabled = !canUndo;
+        redoButton.disabled = !canRedo;
+      },
+    });
+    setActiveTool("select");
+  } catch (error) {
+    console.error("Initialization failed:", error);
+    window.alert("Initialization failed: " + error);
+    try {
+      await invoke("cancel_capture");
+    } catch (cancelError) {
+      console.error("Cancel after initialization failure failed:", cancelError);
+    }
+  }
+})();
 
-function resizeCanvas() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Capture image failed to load"));
+    image.src = src;
+  });
 }
 
-function drawDim() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "rgba(0,0,0,0.45)";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  if (selection) {
-    ctx.clearRect(selection.x, selection.y, selection.w, selection.h);
-    ctx.strokeStyle = "#4da3ff";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(selection.x, selection.y, selection.w, selection.h);
-  }
+function setBusy(value) {
+  busy = value;
+  copyButton.disabled = value;
+  saveButton.disabled = value;
 }
 
-window.addEventListener("mousedown", (e) => {
-  if (e.target.closest("#toolbar")) return;
-  toolbar.classList.add("hidden");
-  start = { x: e.clientX, y: e.clientY };
-  selection = null;
-});
-
-window.addEventListener("mousemove", (e) => {
-  if (!start) return;
-  const x = Math.min(start.x, e.clientX);
-  const y = Math.min(start.y, e.clientY);
-  const w = Math.abs(e.clientX - start.x);
-  const h = Math.abs(e.clientY - start.y);
-  selection = { x, y, w, h };
-  drawDim();
-});
-
-window.addEventListener("mouseup", () => {
-  if (!start || !selection || selection.w < 3 || selection.h < 3) {
-    start = null;
-    return;
-  }
-  start = null;
-  positionToolbar();
+// Place la barre d'outils par défaut juste sous la sélection ; s'il n'y a pas
+// la place en dessous (sélection collée au bas de l'écran), la met à l'intérieur
+// de la zone, en bas. Position bornée au viewport. Non persistée d'une capture
+// à l'autre (chaque capture recrée l'overlay).
+function positionAndShowToolbar(selection) {
   toolbar.classList.remove("hidden");
-});
+  const gap = 8;
+  const tw = toolbar.offsetWidth;
+  const th = toolbar.offsetHeight;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
 
-window.addEventListener("keydown", async (e) => {
-  if (e.key === "Escape") await invoke("cancel_capture");
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c" && selection) {
-    await doCopy();
+  let top = selection.y + selection.height + gap;
+  if (top + th + gap > vh) {
+    // pas de place dessous → à l'intérieur de la zone, en bas
+    top = selection.y + selection.height - th - gap;
   }
+  top = Math.max(gap, Math.min(top, vh - th - gap));
+
+  let left = Math.max(gap, Math.min(selection.x, vw - tw - gap));
+  toolbar.style.left = `${left}px`;
+  toolbar.style.top = `${top}px`;
+}
+
+// Déplacement de la barre via la poignée (la position n'est pas mémorisée).
+const dragHandle = document.getElementById("drag-handle");
+let dragOffset = null;
+dragHandle.addEventListener("pointerdown", (event) => {
+  dragOffset = { x: event.clientX - toolbar.offsetLeft, y: event.clientY - toolbar.offsetTop };
+  dragHandle.setPointerCapture(event.pointerId);
+  event.preventDefault();
+});
+dragHandle.addEventListener("pointermove", (event) => {
+  if (!dragOffset) return;
+  const tw = toolbar.offsetWidth;
+  const th = toolbar.offsetHeight;
+  const left = Math.max(0, Math.min(event.clientX - dragOffset.x, window.innerWidth - tw));
+  const top = Math.max(0, Math.min(event.clientY - dragOffset.y, window.innerHeight - th));
+  toolbar.style.left = `${left}px`;
+  toolbar.style.top = `${top}px`;
+});
+dragHandle.addEventListener("pointerup", (event) => {
+  dragOffset = null;
+  try { dragHandle.releasePointerCapture(event.pointerId); } catch (_) {}
 });
 
-function positionToolbar() {
-  toolbar.style.left = `${selection.x}px`;
-  toolbar.style.top = `${selection.y + selection.h + 8}px`;
+function setActiveTool(tool) {
+  if (!editor) return;
+  editor.setTool(tool);
+  document.querySelectorAll(".tool").forEach((button) =>
+    button.classList.toggle("active", button.dataset.tool === tool)
+  );
 }
 
-function physicalRect() {
-  return {
-    x: Math.round(selection.x * scale),
-    y: Math.round(selection.y * scale),
-    width: Math.round(selection.w * scale),
-    height: Math.round(selection.h * scale),
-  };
-}
+document.querySelectorAll(".tool").forEach((button) =>
+  button.addEventListener("click", () => setActiveTool(button.dataset.tool))
+);
+document.querySelectorAll(".swatch").forEach((button, index) => {
+  button.classList.toggle("active", index === 0);
+  button.addEventListener("click", () => {
+    if (!editor) return;
+    editor.setColor(button.dataset.color);
+    document.querySelectorAll(".swatch").forEach((swatch) =>
+      swatch.classList.toggle("active", swatch === button)
+    );
+  });
+});
+thickness.addEventListener("change", (event) => {
+  if (!editor) return;
+  editor.setStrokeWidth(parseInt(event.target.value, 10));
+});
+undoButton.addEventListener("click", () => editor?.undo());
+redoButton.addEventListener("click", () => editor?.redo());
 
 async function doCopy() {
+  if (busy || !editor?.hasSelection()) return;
+  setBusy(true);
   try {
-    await invoke("copy_selection", { rect: physicalRect() });
-  } catch (e) {
-    console.error("Copy failed:", e);
-    window.alert("Copy failed: " + e);
+    await invoke("copy_composited", { pngBase64: editor.exportPngBase64() });
+  } catch (error) {
+    console.error("Copy failed:", error);
+    window.alert("Copy failed: " + error);
     await invoke("cancel_capture");
+  } finally {
+    setBusy(false);
   }
 }
 
-document.getElementById("copy-btn").addEventListener("click", doCopy);
-document.getElementById("cancel-btn").addEventListener("click", () =>
-  invoke("cancel_capture")
-);
-document.getElementById("save-btn").addEventListener("click", async () => {
+copyButton.addEventListener("click", doCopy);
+document.getElementById("cancel-btn").addEventListener("click", () => invoke("cancel_capture"));
+saveButton.addEventListener("click", doSave);
+
+async function doSave() {
+  if (busy || !editor?.hasSelection()) return;
+  setBusy(true);
   try {
     const suggested = await invoke("default_save_name", { format: "png" });
     const path = await dialog.save({
@@ -110,16 +166,28 @@ document.getElementById("save-btn").addEventListener("click", async () => {
     if (!path) return;
     const lower = path.toLowerCase();
     const format = lower.endsWith(".jpg") || lower.endsWith(".jpeg") ? "jpeg" : "png";
-    await invoke("save_selection", { rect: physicalRect(), path, format });
-  } catch (e) {
-    console.error("Save failed:", e);
-    window.alert("Save failed: " + e);
+    await invoke("save_composited", { pngBase64: editor.exportPngBase64(), path, format });
+  } catch (error) {
+    console.error("Save failed:", error);
+    window.alert("Save failed: " + error);
     await invoke("cancel_capture");
+  } finally {
+    setBusy(false);
   }
-});
+}
 
-window.addEventListener("resize", () => {
-  resizeCanvas();
-  scale = img.naturalWidth / img.clientWidth;
-  drawDim();
+window.addEventListener("keydown", async (event) => {
+  const key = event.key.toLowerCase();
+  const commandKey = event.metaKey || event.ctrlKey;
+
+  if (event.key === "Escape") await invoke("cancel_capture");
+  if (commandKey && key === "c") await doCopy();
+  if (commandKey && key === "z" && !event.shiftKey) {
+    event.preventDefault();
+    editor?.undo();
+  }
+  if (commandKey && (key === "y" || (key === "z" && event.shiftKey))) {
+    event.preventDefault();
+    editor?.redo();
+  }
 });

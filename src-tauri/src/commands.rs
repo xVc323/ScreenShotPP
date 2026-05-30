@@ -1,4 +1,4 @@
-use crate::capture::{self, Rect};
+use crate::capture;
 use crate::{clipboard, storage};
 use base64::Engine;
 use image::RgbaImage;
@@ -70,27 +70,33 @@ pub fn get_capture_data_url(app: AppHandle) -> Result<String, String> {
     Ok(format!("data:image/png;base64,{b64}"))
 }
 
-/// Recadre selon le rectangle (pixels physiques) et copie dans le presse-papier.
+/// Copie une image déjà composée (PNG base64) dans le presse-papier.
 #[tauri::command]
-pub fn copy_selection(app: AppHandle, rect: Rect) -> Result<(), String> {
-    let cropped = with_cropped(&app, rect)?;
-    clipboard::copy_image(&app, &cropped)?;
+pub fn copy_composited(app: AppHandle, png_base64: String) -> Result<(), String> {
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(png_base64)
+        .map_err(|e| e.to_string())?;
+    let img = storage::decode_png_to_rgba(&bytes)?;
+    clipboard::copy_image(&app, &img)?;
     close_overlay(&app);
     Ok(())
 }
 
-/// Recadre et écrit sur disque au chemin/format donnés.
+/// Enregistre une image déjà composée (PNG base64) au format/chemin choisis.
 #[tauri::command]
-pub fn save_selection(
+pub fn save_composited(
     app: AppHandle,
-    rect: Rect,
+    png_base64: String,
     path: String,
     format: String,
 ) -> Result<(), String> {
-    let cropped = with_cropped(&app, rect)?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(png_base64)
+        .map_err(|e| e.to_string())?;
+    let img = storage::decode_png_to_rgba(&bytes)?;
     let fmt = storage::SaveFormat::from_str(&format);
-    let bytes = storage::encode_image(&cropped, fmt)?;
-    storage::write_to_disk(&path, &bytes)?;
+    let out = storage::encode_image(&img, fmt)?;
+    storage::write_to_disk(&path, &out)?;
     close_overlay(&app);
     Ok(())
 }
@@ -105,13 +111,6 @@ pub fn default_save_name(format: String) -> String {
 #[tauri::command]
 pub fn cancel_capture(app: AppHandle) {
     close_overlay(&app);
-}
-
-fn with_cropped(app: &AppHandle, rect: Rect) -> Result<RgbaImage, String> {
-    let state = app.state::<CaptureState>();
-    let guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
-    let img = guard.as_ref().ok_or("Aucune capture en cours")?;
-    Ok(capture::crop_region(img, rect))
 }
 
 fn close_overlay(app: &AppHandle) {

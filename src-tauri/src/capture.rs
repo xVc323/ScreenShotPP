@@ -1,6 +1,8 @@
 use image::RgbaImage;
 
 /// Rectangle de sélection en pixels physiques de l'image capturée.
+// Conservé pour le prochain palier de sélection de zone.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
 pub struct Rect {
     pub x: u32,
@@ -10,6 +12,8 @@ pub struct Rect {
 }
 
 /// Recadre l'image source selon le rectangle, en bornant aux dimensions de l'image.
+// Conservé pour le prochain palier de sélection de zone.
+#[allow(dead_code)]
 pub fn crop_region(src: &RgbaImage, rect: Rect) -> RgbaImage {
     let max_w = src.width().saturating_sub(rect.x);
     let max_h = src.height().saturating_sub(rect.y);

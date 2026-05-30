@@ -5,11 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Capture</title>
     <link rel="stylesheet" href="overlay.css" />
+    <script src="vendor/konva.min.js"></script>
   </head>
   <body class="overlay-body">
-    <img id="shot" alt="" />
-    <canvas id="dim"></canvas>
+    <div id="stage"></div>
     <div id="toolbar" class="toolbar hidden">
+      <span class="drag-handle" id="drag-handle" title="Move toolbar">⠿</span>
+      <button class="tool" data-tool="select" title="Select/Move">▱</button>
+      <button class="tool" data-tool="rect" title="Rectangle">▭</button>
+      <button class="tool" data-tool="ellipse" title="Ellipse">◯</button>
+      <button class="tool" data-tool="line" title="Line">╱</button>
+      <button class="tool" data-tool="arrow" title="Arrow">↗</button>
+      <span class="sep"></span>
+      <button class="swatch" data-color="#e5484d" style="background:#e5484d"></button>
+      <button class="swatch" data-color="#4da3ff" style="background:#4da3ff"></button>
+      <button class="swatch" data-color="#3fb950" style="background:#3fb950"></button>
+      <button class="swatch" data-color="#f2cc60" style="background:#f2cc60"></button>
+      <button class="swatch" data-color="#ffffff" style="background:#ffffff"></button>
+      <select id="thickness" title="Thickness">
+        <option value="2">S</option>
+        <option value="4" selected>M</option>
+        <option value="8">L</option>
+        <option value="14">XL</option>
+      </select>
+      <span class="sep"></span>
+      <button id="undo" title="Undo">↶</button>
+      <button id="redo" title="Redo">↷</button>
+      <span class="sep"></span>
       <button id="copy-btn">Copy</button>
       <button id="save-btn">Save</button>
       <button id="cancel-btn">Cancel</button>
