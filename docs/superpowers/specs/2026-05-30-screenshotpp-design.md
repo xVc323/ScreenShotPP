@@ -283,3 +283,20 @@ sur les deux OS.
 - **L'icône menu bar et la latence ne sont représentatives qu'en build release/empaqueté.**
   Le mode `tauri dev` (binaire debug non empaqueté) n'affiche pas l'icône de façon fiable
   et est nettement plus lent — toujours valider le ressenti sur le `.app`.
+- **Taille du data URL d'affichage (corrigé au Palier 2c).** L'image gelée est envoyée à
+  l'overlay en `data:image/png;base64,...`. Sur un écran **5K (5120×2880)**, le PNG « rapide »
+  (peu compressé) donnait un data URL de **~78 Mo** que le `<img>` du webview refuse de
+  charger → l'éditeur plantait à l'init et l'overlay se refermait. Correctif : l'affichage
+  utilise désormais le **PNG bien compressé** (`encode_image`, sans perte) → ~21 Mo / data
+  URL ~29 Mo, qui passe. **Coût** : encodage plus lent (le voile gris d'ouverture est plus
+  marqué sur grand écran). **Risque résiduel** : un écran 5K très chargé pourrait approcher
+  la limite. **Vrai correctif à terme** : servir l'image via un **protocole natif custom**
+  (`capture://`) ou un fichier temporaire via `convertFileSrc` — supprime la limite de
+  taille **et** permet de revenir à un encodage rapide (faible latence). À faire au Palier 4.
+- **Signature ad-hoc → permission « Enregistrement de l'écran » redemandée à chaque build.**
+  L'app est signée **ad-hoc** ; son empreinte (cdhash) change à chaque compilation, donc
+  macOS la voit comme une nouvelle app et **réinitialise l'autorisation TCC** à chaque
+  rebuild (sur macOS 26, l'octroi exige aussi un **quit & reopen**). Pénible en dev.
+  **Correctif** : signer avec une **identité stable** (certificat auto-signé de dev, puis
+  Developer ID pour la distribution) → l'autorisation persiste entre les builds. À faire au
+  Palier 4 (signature/notarisation).

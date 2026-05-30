@@ -22,4 +22,4 @@ jobs:
         with:
           node-version: 22
       - name: Tests frontend (logique pure)
-        run: node --test src/editor/history.test.js src/editor/color.test.js
+        run: node --test src/editor/history.test.js src/editor/color.test.js src/editor/bubbles.test.js

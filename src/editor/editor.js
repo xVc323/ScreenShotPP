@@ -1,7 +1,11 @@
 import { History } from "./history.js";
+import { bubbleNumberAt } from "./bubbles.js";
 
 const MIN_SIZE = 2;
 const FONT_FAMILY = "Arial";
+const BUBBLE_RADIUS = 15;
+const BUBBLE_FONT = 16;
+const LABEL_OFFSET = { dx: 0, dy: -64 };
 const RESIZE_ANCHORS = ["top-left", "top-center", "top-right", "middle-right", "bottom-right", "bottom-center", "bottom-left", "middle-left"];
 
 /** Crée l'éditeur d'annotations Konva plein écran. */
@@ -60,6 +64,14 @@ export function createEditor(o = {}) {
     }
     if (tool === "text") {
       if (insideSelection(point)) openTextEditor(clampToSelection(point));
+      return;
+    }
+    if (tool === "bubble") {
+      if (insideSelection(point)) {
+        annotations.push({ id: `annotation-${nextId++}`, type: "bubble", x: point.x, y: point.y, color, label: "", labelOffset: null });
+        renderAnnotations();
+        saveHistory();
+      }
       return;
     }
     if (!insideSelection(point)) return;
@@ -305,13 +317,79 @@ export function createEditor(o = {}) {
     return Math.hypot(descriptor.points[2] - descriptor.points[0], descriptor.points[3] - descriptor.points[1]) < MIN_SIZE;
   }
 
+  function makeBubbleNode(descriptor, number) {
+    const group = new Konva.Group({ id: descriptor.id, x: descriptor.x, y: descriptor.y, draggable: tool === "select" });
+    group.add(new Konva.Circle({ radius: BUBBLE_RADIUS, fill: descriptor.color }));
+    group.add(new Konva.Text({
+      text: String(number ?? "?"), fontSize: BUBBLE_FONT, fontStyle: "bold", fill: "#fff",
+      fontFamily: FONT_FAMILY, width: BUBBLE_RADIUS * 2, height: BUBBLE_RADIUS * 2,
+      align: "center", verticalAlign: "middle", x: -BUBBLE_RADIUS, y: -BUBBLE_RADIUS, listening: false,
+    }));
+
+    if (descriptor.label && descriptor.label.trim()) {
+      const off = descriptor.labelOffset || LABEL_OFFSET;
+      const connector = new Konva.Line({ points: [off.dx, off.dy, 0, 0], stroke: descriptor.color, strokeWidth: 2 });
+      group.add(connector);
+      const labelGroup = new Konva.Group({ x: off.dx, y: off.dy, draggable: tool === "select", name: "label" });
+      const labelText = new Konva.Text({ text: descriptor.label, fontSize: 14, fill: "#e6edf3", fontFamily: FONT_FAMILY });
+      const tw = labelText.width();
+      const th = labelText.height();
+      const pad = 6;
+      labelGroup.add(new Konva.Rect({ x: -tw / 2 - pad, y: -th / 2 - pad, width: tw + pad * 2, height: th + pad * 2, fill: "#0d1117", stroke: descriptor.color, strokeWidth: 2, cornerRadius: 5 }));
+      labelText.position({ x: -tw / 2, y: -th / 2 });
+      labelGroup.add(labelText);
+      group.add(labelGroup);
+      labelGroup.on("dragmove", () => connector.points([labelGroup.x(), labelGroup.y(), 0, 0]));
+      labelGroup.on("dragend", (event) => {
+        if (event.target !== labelGroup) return;
+        descriptor.labelOffset = { dx: labelGroup.x(), dy: labelGroup.y() };
+        saveHistory();
+      });
+    }
+
+    group.on("click tap", (event) => {
+      if (tool !== "select") return;
+      event.cancelBubble = true;
+      selectNode(group);
+    });
+    group.on("dragend", (event) => {
+      if (event.target !== group) return;
+      descriptor.x = group.x();
+      descriptor.y = group.y();
+      saveHistory();
+    });
+    group.on("dblclick dbltap", (event) => {
+      event.cancelBubble = true;
+      openLabelEditor(descriptor, group);
+    });
+    return group;
+  }
+
+  function openLabelEditor(descriptor, group) {
+    const abs = group.getAbsolutePosition();
+    const off = descriptor.labelOffset || LABEL_OFFSET;
+    openTextEditor({ x: abs.x + off.dx, y: abs.y + off.dy }, {
+      initial: descriptor.label || "",
+      onCommit: (text) => {
+        descriptor.label = text;
+        if (!descriptor.labelOffset) descriptor.labelOffset = { ...LABEL_OFFSET };
+        renderAnnotations();
+        saveHistory();
+      },
+    });
+  }
+
   function renderAnnotations() {
     transformer.nodes([]);
     shapeGroup.destroyChildren();
-    annotations.forEach((descriptor) => {
-      const node = makeNode(descriptor);
-      bindShape(node);
-      shapeGroup.add(node);
+    annotations.forEach((descriptor, index) => {
+      if (descriptor.type === "bubble") {
+        shapeGroup.add(makeBubbleNode(descriptor, bubbleNumberAt(annotations, index)));
+      } else {
+        const node = makeNode(descriptor);
+        bindShape(node);
+        shapeGroup.add(node);
+      }
       const number = Number(String(descriptor.id).replace("annotation-", ""));
       if (Number.isFinite(number)) nextId = Math.max(nextId, number + 1);
     });
@@ -361,9 +439,10 @@ export function createEditor(o = {}) {
   }
 
   // Ouvre un <textarea> HTML temporaire au point cliqué pour la saisie sur place.
-  function openTextEditor(point) {
+  function openTextEditor(point, options = {}) {
     commitText();
     const textarea = document.createElement("textarea");
+    textarea.value = options.initial || "";
     Object.assign(textarea.style, {
       position: "fixed",
       left: `${point.x}px`,
@@ -382,7 +461,7 @@ export function createEditor(o = {}) {
       zIndex: "20",
     });
     document.body.appendChild(textarea);
-    activeText = { textarea, point };
+    activeText = { textarea, point, onCommit: options.onCommit };
     const autoSize = () => {
       textarea.style.height = "auto";
       textarea.style.height = `${textarea.scrollHeight}px`;
@@ -406,11 +485,15 @@ export function createEditor(o = {}) {
   // Valide la saisie en cours : retire le textarea et pose un Konva.Text si non vide.
   function commitText() {
     if (!activeText) return;
-    const { textarea, point } = activeText;
+    const { textarea, point, onCommit } = activeText;
     const value = textarea.value;
     activeText = null;
     textarea.remove();
     const text = value.replace(/\s+$/u, "");
+    if (onCommit) {
+      onCommit(text);
+      return;
+    }
     if (!text.trim()) return;
     annotations.push({ id: `annotation-${nextId++}`, type: "text", x: point.x, y: point.y, text, fill: color, fontSize });
     renderAnnotations();
@@ -426,10 +509,11 @@ export function createEditor(o = {}) {
 
   return {
     setTool(value) {
-      if (!["select", "rect", "ellipse", "line", "arrow", "free", "text"].includes(value)) throw new Error(`Outil inconnu: ${value}`);
+      if (!["select", "rect", "ellipse", "line", "arrow", "free", "text", "bubble"].includes(value)) throw new Error(`Outil inconnu: ${value}`);
       tool = value;
       if (tool !== "select") transformer.nodes([]);
       shapeGroup.getChildren().forEach((node) => node.draggable(tool === "select"));
+      shapeGroup.find(".label").forEach((node) => node.draggable(tool === "select"));
       annotationLayer.draw();
     },
     setColor(value) { color = value; },
