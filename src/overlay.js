@@ -221,7 +221,7 @@ async function doSave() {
   setBusy(true);
   try {
     const target = outputSize.value;
-    const suggested = await invoke("default_save_name", { format: target === "full" ? "png" : "jpeg" });
+    const suggested = await invoke("default_save_path", { format: target === "full" ? "png" : "jpeg" });
     const path = await dialog.save({
       defaultPath: suggested,
       filters: [

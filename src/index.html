@@ -3,9 +3,47 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ScreenShotPP</title>
+    <title>ScreenShotPP — Settings</title>
+    <link rel="stylesheet" href="main.css" />
   </head>
   <body>
-    <!-- Hidden background window. Settings UI arrives in a later palier. -->
+    <main class="settings">
+      <h1>Settings</h1>
+
+      <label class="field">
+        <span class="field-label">Capture shortcut</span>
+        <button id="shortcut" class="recorder" type="button">…</button>
+      </label>
+
+      <label class="field">
+        <span class="field-label">Default save folder</span>
+        <span class="row">
+          <span id="folder" class="path">Desktop</span>
+          <button id="choose-folder" type="button">Choose…</button>
+        </span>
+      </label>
+
+      <label class="field">
+        <span class="field-label">Default format</span>
+        <select id="format">
+          <option value="png">PNG</option>
+          <option value="jpeg">JPEG</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span class="field-label">OCR language</span>
+        <select id="ocr-language">
+          <option value="auto">Auto-detect</option>
+          <option value="en-US">English</option>
+          <option value="fr-FR">Français</option>
+          <option value="es-ES">Español</option>
+          <option value="de-DE">Deutsch</option>
+        </select>
+      </label>
+
+      <p class="version">Version <span id="version">—</span></p>
+    </main>
+    <script type="module" src="main.js"></script>
   </body>
 </html>
