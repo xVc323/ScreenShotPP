@@ -16,6 +16,23 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        .register_uri_scheme_protocol("capture", |ctx, _request| {
+            let app = ctx.app_handle();
+            let state = app.state::<CaptureState>();
+            let guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
+            match guard.as_ref() {
+                Some(img) => match storage::encode_png_fast(img) {
+                    Ok(png) => tauri::http::Response::builder()
+                        .header("Content-Type", "image/png")
+                        .header("Access-Control-Allow-Origin", "*")
+                        .header("Cache-Control", "no-store")
+                        .body(png)
+                        .unwrap(),
+                    Err(_) => tauri::http::Response::builder().status(500).body(Vec::new()).unwrap(),
+                },
+                None => tauri::http::Response::builder().status(404).body(Vec::new()).unwrap(),
+            }
+        })
         .manage(CaptureState::default())
         .invoke_handler(tauri::generate_handler![
             commands::get_capture_data_url,

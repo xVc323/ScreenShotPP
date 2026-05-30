@@ -33,6 +33,47 @@ pub fn capture_primary_monitor() -> Result<RgbaImage, String> {
     monitor.capture_image().map_err(|e| e.to_string())
 }
 
+/// Rectangle d'un moniteur en pixels physiques globaux.
+#[derive(Debug, Clone, Copy)]
+pub struct MonitorRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Index du premier moniteur contenant le point (x, y), ou None.
+pub fn monitor_at(rects: &[MonitorRect], x: i32, y: i32) -> Option<usize> {
+    rects
+        .iter()
+        .position(|m| x >= m.x && x < m.x + m.width as i32 && y >= m.y && y < m.y + m.height as i32)
+}
+
+/// Capture le moniteur contenant (x, y), ou le moniteur principal en repli.
+pub fn capture_at(x: i32, y: i32) -> Result<RgbaImage, String> {
+    let monitors = xcap::Monitor::all().map_err(|e| e.to_string())?;
+    let rects: Vec<MonitorRect> = monitors
+        .iter()
+        .map(|m| MonitorRect {
+            x: m.x().unwrap_or(0),
+            y: m.y().unwrap_or(0),
+            width: m.width().unwrap_or(0),
+            height: m.height().unwrap_or(0),
+        })
+        .collect();
+    let idx = monitor_at(&rects, x, y).unwrap_or_else(|| {
+        monitors
+            .iter()
+            .position(|m| m.is_primary().unwrap_or(false))
+            .unwrap_or(0)
+    });
+    monitors
+        .get(idx)
+        .ok_or("Aucun moniteur")?
+        .capture_image()
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,5 +117,17 @@ mod tests {
         // Recadre incluant la colonne gauche : pixel (0,0) doit être rouge.
         let out2 = crop_region(&src, Rect { x: 0, y: 0, width: 2, height: 2 });
         assert_eq!(*out2.get_pixel(0, 0), image::Rgba([255, 0, 0, 255]));
+    }
+
+    #[test]
+    fn monitor_at_finds_the_monitor_containing_the_point() {
+        let rects = [
+            MonitorRect { x: 0, y: 0, width: 1000, height: 1000 },
+            MonitorRect { x: 1000, y: 0, width: 800, height: 600 },
+        ];
+        assert_eq!(monitor_at(&rects, 500, 500), Some(0));
+        assert_eq!(monitor_at(&rects, 1200, 100), Some(1));
+        assert_eq!(monitor_at(&rects, 5000, 5000), None);
+        assert_eq!(monitor_at(&rects, 1000, 0), Some(1)); // bord gauche du 2e écran
     }
 }
