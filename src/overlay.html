@@ -24,18 +24,14 @@
       <button class="swatch" data-color="#3fb950" style="background:#3fb950"></button>
       <button class="swatch" data-color="#f2cc60" style="background:#f2cc60"></button>
       <button class="swatch" data-color="#ffffff" style="background:#ffffff"></button>
+      <input type="color" id="custom-color" class="custom-color" title="Custom color" />
       <select id="thickness" title="Thickness">
         <option value="2">S</option>
         <option value="4" selected>M</option>
         <option value="8">L</option>
         <option value="14">XL</option>
       </select>
-      <select id="fontsize" title="Text size">
-        <option value="16">16</option>
-        <option value="24" selected>24</option>
-        <option value="32">32</option>
-        <option value="48">48</option>
-      </select>
+      <input id="fontsize" type="number" min="6" max="300" value="24" title="Text size" />
       <span class="sep"></span>
       <button id="undo" title="Undo">↶</button>
       <button id="redo" title="Redo">↷</button>

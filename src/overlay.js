@@ -6,6 +6,9 @@ const dialog = window.__TAURI__.dialog;
 const toolbar = document.getElementById("toolbar");
 const thickness = document.getElementById("thickness");
 const fontsize = document.getElementById("fontsize");
+const customColor = document.getElementById("custom-color");
+const savedColor = localStorage.getItem("customColor");
+if (savedColor) customColor.value = savedColor;
 const undoButton = document.getElementById("undo");
 const redoButton = document.getElementById("redo");
 const copyButton = document.getElementById("copy-btn");
@@ -126,7 +129,15 @@ document.querySelectorAll(".swatch").forEach((button, index) => {
     document.querySelectorAll(".swatch").forEach((swatch) =>
       swatch.classList.toggle("active", swatch === button)
     );
+    customColor.classList.remove("active");
   });
+});
+customColor.addEventListener("input", (event) => {
+  const value = event.target.value;
+  if (editor) editor.setColor(value);
+  localStorage.setItem("customColor", value);
+  document.querySelectorAll(".swatch").forEach((swatch) => swatch.classList.remove("active"));
+  customColor.classList.add("active");
 });
 thickness.addEventListener("change", (event) => {
   if (!editor) return;
