@@ -26,7 +26,7 @@ redoButton.disabled = true;
       scale,
       color: document.querySelector(".swatch.active").dataset.color,
       strokeWidth: parseInt(thickness.value, 10),
-      onSelectionDone: () => toolbar.classList.remove("hidden"),
+      onSelectionDone: (selection) => positionAndShowToolbar(selection),
       onHistoryChange: ({ canUndo, canRedo }) => {
         undoButton.disabled = !canUndo;
         redoButton.disabled = !canRedo;
@@ -58,6 +58,52 @@ function setBusy(value) {
   copyButton.disabled = value;
   saveButton.disabled = value;
 }
+
+// Place la barre d'outils par défaut juste sous la sélection ; s'il n'y a pas
+// la place en dessous (sélection collée au bas de l'écran), la met à l'intérieur
+// de la zone, en bas. Position bornée au viewport. Non persistée d'une capture
+// à l'autre (chaque capture recrée l'overlay).
+function positionAndShowToolbar(selection) {
+  toolbar.classList.remove("hidden");
+  const gap = 8;
+  const tw = toolbar.offsetWidth;
+  const th = toolbar.offsetHeight;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  let top = selection.y + selection.height + gap;
+  if (top + th + gap > vh) {
+    // pas de place dessous → à l'intérieur de la zone, en bas
+    top = selection.y + selection.height - th - gap;
+  }
+  top = Math.max(gap, Math.min(top, vh - th - gap));
+
+  let left = Math.max(gap, Math.min(selection.x, vw - tw - gap));
+  toolbar.style.left = `${left}px`;
+  toolbar.style.top = `${top}px`;
+}
+
+// Déplacement de la barre via la poignée (la position n'est pas mémorisée).
+const dragHandle = document.getElementById("drag-handle");
+let dragOffset = null;
+dragHandle.addEventListener("pointerdown", (event) => {
+  dragOffset = { x: event.clientX - toolbar.offsetLeft, y: event.clientY - toolbar.offsetTop };
+  dragHandle.setPointerCapture(event.pointerId);
+  event.preventDefault();
+});
+dragHandle.addEventListener("pointermove", (event) => {
+  if (!dragOffset) return;
+  const tw = toolbar.offsetWidth;
+  const th = toolbar.offsetHeight;
+  const left = Math.max(0, Math.min(event.clientX - dragOffset.x, window.innerWidth - tw));
+  const top = Math.max(0, Math.min(event.clientY - dragOffset.y, window.innerHeight - th));
+  toolbar.style.left = `${left}px`;
+  toolbar.style.top = `${top}px`;
+});
+dragHandle.addEventListener("pointerup", (event) => {
+  dragOffset = null;
+  try { dragHandle.releasePointerCapture(event.pointerId); } catch (_) {}
+});
 
 function setActiveTool(tool) {
   if (!editor) return;

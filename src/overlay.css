@@ -2,11 +2,16 @@
 .overlay-body { overflow: hidden; cursor: crosshair; user-select: none; background: #000; }
 #stage { position: fixed; inset: 0; width: 100vw; height: 100vh; }
 .toolbar {
-  position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+  position: fixed; top: 0; left: 0;
   display: flex; align-items: center; gap: 6px; padding: 7px 9px;
   background: #161b22; border: 1px solid #30363d; border-radius: 9px; z-index: 10;
 }
 .toolbar.hidden { display: none; }
+.drag-handle {
+  cursor: move; color: #8b949e; font-size: 16px; line-height: 1;
+  padding: 0 4px; align-self: center; user-select: none; touch-action: none;
+}
+.drag-handle:hover { color: #e6edf3; }
 .toolbar button, .toolbar select {
   background: #21262d; color: #e6edf3; border: 1px solid #30363d;
   border-radius: 6px; min-width: 30px; height: 30px; cursor: pointer; font-size: 14px;
