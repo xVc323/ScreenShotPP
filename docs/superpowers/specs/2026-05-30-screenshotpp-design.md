@@ -268,3 +268,18 @@ sur les deux OS.
 - Bibliothèque de canvas d'annotation (maison vs Konva/Fabric) → palier 2.
 - Comportement de la touche `Entrée` (action par défaut) dans l'éditeur → palier 2.
 - Format exact du nom de fichier par défaut.
+
+## 14. Problèmes connus / optimisations futures
+
+- **Léger voile gris à l'ouverture de l'overlay (~100-300 ms en release, 1-2 s en dev
+  debug).** Cause : la fenêtre overlay s'affiche *avant* que l'image gelée soit encodée
+  (PNG rapide) + transférée via base64/IPC. Jugé acceptable pour le Palier 1 (vérifié sur
+  le `.app` release). Leviers d'optimisation à explorer plus tard :
+  1. Encoder l'image **avant** de créer la fenêtre (la fenêtre s'ouvre déjà prête).
+  2. Servir l'image via un **protocole natif custom** (`capture://current`) au lieu de
+     base64 + IPC (moins de surcoût de transfert).
+  3. Pour le confort de dev uniquement : `[profile.dev.package."*"] opt-level = 3` dans
+     `Cargo.toml` pour optimiser les dépendances (encodage image) même en build debug.
+- **L'icône menu bar et la latence ne sont représentatives qu'en build release/empaqueté.**
+  Le mode `tauri dev` (binaire debug non empaqueté) n'affiche pas l'icône de façon fiable
+  et est nettement plus lent — toujours valider le ressenti sur le `.app`.
