@@ -20,3 +20,16 @@ pub fn recognize(img: &RgbaImage) -> Result<String, String> {
 pub fn recognize(_img: &RgbaImage) -> Result<String, String> {
     Err("OCR pas encore disponible sur cette plateforme".to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn blank_image_has_no_recognized_text() {
+        let img = RgbaImage::new(16, 16);
+
+        assert_eq!(recognize(&img).unwrap(), "");
+    }
+}
