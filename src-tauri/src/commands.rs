@@ -12,7 +12,9 @@ pub struct CaptureState(pub Mutex<Option<RgbaImage>>);
 /// Déclenché par le raccourci : capture l'écran, stocke l'image, ouvre l'overlay.
 /// La création de la fenêtre est faite sur le thread principal (exigence macOS).
 pub fn start_capture(app: AppHandle) -> Result<(), String> {
-    let img = capture::capture_primary_monitor()?;
+    let cursor = app.cursor_position().map_err(|e| e.to_string())?;
+    let (cx, cy) = (cursor.x as i32, cursor.y as i32);
+    let img = capture::capture_at(cx, cy)?;
     {
         let state = app.state::<CaptureState>();
         *state.0.lock().unwrap_or_else(|e| e.into_inner()) = Some(img);
@@ -35,11 +37,21 @@ pub fn start_capture(app: AppHandle) -> Result<(), String> {
         .resizable(false)
         .background_color(tauri::webview::Color(0, 0, 0, 255));
 
-        // Épingle l'overlay au moniteur principal pour que l'image affichée et
-        // la sélection partagent le même espace de coordonnées (le crop reste juste).
-        // La sélection multi-moniteur complète est repoussée à un palier ultérieur.
-        match app2.primary_monitor() {
-            Ok(Some(monitor)) => {
+        // Épingle l'overlay au moniteur Tauri sous le curseur (même écran que la capture),
+        // pour que l'image affichée et la sélection partagent le même espace de coordonnées.
+        let monitors = app2.available_monitors().unwrap_or_default();
+        let rects: Vec<capture::MonitorRect> = monitors
+            .iter()
+            .map(|m| {
+                let p = m.position();
+                let s = m.size();
+                capture::MonitorRect { x: p.x, y: p.y, width: s.width, height: s.height }
+            })
+            .collect();
+        let target_index =
+            capture::monitor_at(&rects, cx, cy).or(if monitors.is_empty() { None } else { Some(0) });
+        match target_index.and_then(|i| monitors.get(i)) {
+            Some(monitor) => {
                 let pos = monitor.position();
                 let size = monitor.size();
                 let sf = monitor.scale_factor();
@@ -47,7 +59,7 @@ pub fn start_capture(app: AppHandle) -> Result<(), String> {
                     .inner_size(size.width as f64 / sf, size.height as f64 / sf)
                     .position(pos.x as f64 / sf, pos.y as f64 / sf);
             }
-            _ => {
+            None => {
                 builder = builder.fullscreen(true);
             }
         }

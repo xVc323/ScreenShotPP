@@ -29,8 +29,8 @@ redoButton.disabled = true;
 
 (async function init() {
   try {
-    const dataUrl = await invoke("get_capture_data_url");
-    const image = await loadImage(dataUrl);
+    const base = navigator.userAgent.includes("Windows") ? "http://capture.localhost" : "capture://localhost";
+    const image = await loadImage(base + "/current?t=" + Date.now());
     const scale = image.naturalWidth / window.innerWidth;
     editor = createEditor({
       container: "stage",
@@ -60,6 +60,7 @@ redoButton.disabled = true;
 function loadImage(src) {
   return new Promise((resolve, reject) => {
     const image = new Image();
+    image.crossOrigin = "anonymous";
     image.onload = () => resolve(image);
     image.onerror = () => reject(new Error("Capture image failed to load"));
     image.src = src;
