@@ -1,4 +1,5 @@
 use image::RgbaImage;
+#[cfg(target_os = "macos")]
 use serde::Deserialize;
 
 #[cfg(target_os = "macos")]
@@ -72,7 +73,7 @@ mod windows_impl {
             .map_err(err)?
             .get()
             .map_err(err)?;
-        let bitmap = SoftwareBitmap::Convert(
+        let bitmap = SoftwareBitmap::ConvertWithAlpha(
             &decoded,
             BitmapPixelFormat::Bgra8,
             BitmapAlphaMode::Premultiplied,
