@@ -55,3 +55,18 @@
 .toolbar #copy-btn, .toolbar #save-btn, .toolbar #cancel-btn { padding: 0 12px; }
 .sep { width: 1px; height: 22px; background: #30363d; margin: 0 4px; }
 .toolbar #output-size { width: 80px; }
+.ocr-panel {
+  position: fixed; z-index: 40; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 420px; max-width: 80vw; padding: 12px; display: flex; flex-direction: column; gap: 10px;
+  background: #161b22; border: 1px solid #30363d; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.6);
+}
+.ocr-panel[hidden] { display: none; }
+.ocr-panel textarea {
+  width: 100%; height: 220px; resize: vertical; background: #0d1117; color: #e6edf3;
+  border: 1px solid #30363d; border-radius: 6px; padding: 8px; font: 13px ui-monospace, monospace;
+}
+.ocr-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.ocr-actions button {
+  background: #21262d; color: #e6edf3; border: 1px solid #30363d; border-radius: 6px;
+  height: 30px; padding: 0 12px; cursor: pointer;
+}

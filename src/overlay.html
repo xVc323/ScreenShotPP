@@ -43,9 +43,17 @@
         <option value="2mb">≤2MB</option>
         <option value="1mb">≤1MB</option>
       </select>
+      <button id="ocr-btn">OCR</button>
       <button id="copy-btn">Copy</button>
       <button id="save-btn">Save</button>
       <button id="cancel-btn">Cancel</button>
+    </div>
+    <div id="ocr-panel" class="ocr-panel" hidden>
+      <textarea id="ocr-text" spellcheck="false"></textarea>
+      <div class="ocr-actions">
+        <button id="ocr-copy">Copy text</button>
+        <button id="ocr-close">Close</button>
+      </div>
     </div>
     <script type="module" src="overlay.js"></script>
   </body>

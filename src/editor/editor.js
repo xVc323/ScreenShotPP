@@ -1,5 +1,6 @@
 import { History } from "./history.js";
 import { bubbleNumberAt } from "./bubbles.js";
+import { isEditableTarget } from "../editable-target.js";
 
 const MIN_SIZE = 2;
 const FONT_FAMILY = "Arial";
@@ -176,6 +177,7 @@ export function createEditor(o = {}) {
   });
 
   function onKeyDown(event) {
+    if (isEditableTarget(event.target)) return;
     if (event.key !== "Delete" && event.key !== "Backspace") return;
     const node = transformer.nodes()[0];
     if (!node) return;
@@ -537,6 +539,16 @@ export function createEditor(o = {}) {
         annotationLayer.draw();
         veilLayer.draw();
       }
+    },
+    selectionPhysicalRect() {
+      if (!selection) return null;
+      const s = positiveNumber(o.scale, 1);
+      return {
+        x: Math.round(selection.x * s),
+        y: Math.round(selection.y * s),
+        width: Math.round(selection.width * s),
+        height: Math.round(selection.height * s),
+      };
     },
     hasSelection() { return selection !== null; },
     destroy() {
