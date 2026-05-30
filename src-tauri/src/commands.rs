@@ -122,9 +122,11 @@ pub fn default_save_name(format: String) -> String {
 #[tauri::command]
 pub fn ocr_region(app: AppHandle, rect: capture::Rect) -> Result<String, String> {
     let state = app.state::<CaptureState>();
-    let guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
-    let img = guard.as_ref().ok_or("Aucune capture en cours")?;
-    let cropped = capture::crop_region(img, rect);
+    let cropped = {
+        let guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
+        let img = guard.as_ref().ok_or("Aucune capture en cours")?;
+        capture::crop_region(img, rect)
+    };
     crate::ocr::recognize(&cropped)
 }
 
