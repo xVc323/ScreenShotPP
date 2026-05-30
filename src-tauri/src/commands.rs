@@ -65,7 +65,7 @@ pub fn get_capture_data_url(app: AppHandle) -> Result<String, String> {
     let state = app.state::<CaptureState>();
     let guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
     let img = guard.as_ref().ok_or("Aucune capture en cours")?;
-    let png = storage::encode_png_fast(img)?;
+    let png = storage::encode_image(img, storage::SaveFormat::Png)?;
     let b64 = base64::engine::general_purpose::STANDARD.encode(png);
     Ok(format!("data:image/png;base64,{b64}"))
 }
