@@ -3,6 +3,7 @@ node_modules/
 dist/
 dist-ssr
 src-tauri/target/
+src-tauri/gen/
 
 # Compagnon visuel brainstorming
 .superpowers/

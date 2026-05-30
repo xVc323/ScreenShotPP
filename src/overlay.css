@@ -1,0 +1,14 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+.overlay-body { overflow: hidden; cursor: crosshair; user-select: none; background: #000; }
+#shot { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: fill; }
+#dim { position: fixed; inset: 0; width: 100vw; height: 100vh; }
+.toolbar {
+  position: fixed; display: flex; gap: 6px; padding: 6px;
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px; z-index: 10;
+}
+.toolbar.hidden { display: none; }
+.toolbar button {
+  background: #21262d; color: #e6edf3; border: 1px solid #30363d;
+  border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 13px;
+}
+.toolbar button:hover { background: #30363d; }
