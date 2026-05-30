@@ -16,6 +16,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+swift-rs = { version = "1.0.7", features = ["build"] }
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
@@ -28,4 +29,5 @@ tauri-plugin-clipboard-manager = "2.3.2"
 tauri-plugin-global-shortcut = "2.3.2"
 tauri-plugin-dialog = "2.7.1"
 base64 = "0.22.1"
+swift-rs = "1.0.7"
 

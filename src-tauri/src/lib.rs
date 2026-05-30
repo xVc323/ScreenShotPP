@@ -5,6 +5,7 @@ mod capture;
 mod clipboard;
 mod hotkey;
 mod commands;
+mod ocr;
 
 use commands::CaptureState;
 
