@@ -1,0 +1,10 @@
+# Dépendances & builds
+node_modules/
+dist/
+src-tauri/target/
+
+# Compagnon visuel brainstorming
+.superpowers/
+
+# OS
+.DS_Store
