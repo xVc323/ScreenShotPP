@@ -32,4 +32,17 @@ mod tests {
 
         assert_eq!(recognize(&img).unwrap(), "");
     }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn recognizes_english_and_french_text_fixture() {
+        let img = image::load_from_memory(include_bytes!("../fixtures/ocr-en-fr.png"))
+            .unwrap()
+            .to_rgba8();
+
+        let text = recognize(&img).unwrap();
+
+        assert!(text.contains("HELLO VISION"), "OCR output: {text:?}");
+        assert!(text.contains("BONJOUR VISION"), "OCR output: {text:?}");
+    }
 }
