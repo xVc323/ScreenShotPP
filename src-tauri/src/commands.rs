@@ -72,12 +72,18 @@ pub fn get_capture_data_url(app: AppHandle) -> Result<String, String> {
 
 /// Copie une image déjà composée (PNG base64) dans le presse-papier.
 #[tauri::command]
-pub fn copy_composited(app: AppHandle, png_base64: String) -> Result<(), String> {
+pub fn copy_composited(app: AppHandle, png_base64: String, target: String) -> Result<(), String> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(png_base64)
         .map_err(|e| e.to_string())?;
     let img = storage::decode_png_to_rgba(&bytes)?;
-    clipboard::copy_image(&app, &img)?;
+    match storage::target_max_bytes(&target) {
+        Some(n) => {
+            let reduced = storage::fit_by_downscale(&img, n)?;
+            clipboard::copy_image(&app, &reduced)?;
+        }
+        None => clipboard::copy_image(&app, &img)?,
+    }
     close_overlay(&app);
     Ok(())
 }
@@ -89,13 +95,19 @@ pub fn save_composited(
     png_base64: String,
     path: String,
     format: String,
+    target: String,
 ) -> Result<(), String> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(png_base64)
         .map_err(|e| e.to_string())?;
     let img = storage::decode_png_to_rgba(&bytes)?;
-    let fmt = storage::SaveFormat::from_str(&format);
-    let out = storage::encode_image(&img, fmt)?;
+    let out = match storage::target_max_bytes(&target) {
+        Some(n) => storage::fit_by_jpeg_quality(&img, n)?,
+        None => {
+            let fmt = storage::SaveFormat::from_str(&format);
+            storage::encode_image(&img, fmt)?
+        }
+    };
     storage::write_to_disk(&path, &out)?;
     close_overlay(&app);
     Ok(())
