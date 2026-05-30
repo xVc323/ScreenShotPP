@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "sspp-scaffold",
+  "productName": "ScreenShotPP",
   "version": "0.1.0",
-  "identifier": "com.pat.sspp-scaffold",
+  "identifier": "com.pat.screenshotpp",
   "build": {
     "frontendDist": "../src"
   },
@@ -10,9 +10,11 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "sspp-scaffold",
+        "label": "main",
+        "title": "ScreenShotPP",
         "width": 800,
-        "height": 600
+        "height": 600,
+        "visible": false
       }
     ],
     "security": {

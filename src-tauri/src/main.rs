@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    sspp_scaffold_lib::run()
+    screenshotpp_lib::run()
 }
