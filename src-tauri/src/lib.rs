@@ -22,6 +22,8 @@ pub fn run() {
             commands::save_composited,
             commands::default_save_name,
             commands::cancel_capture,
+            commands::ocr_region,
+            commands::copy_text,
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
