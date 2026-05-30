@@ -15,26 +15,43 @@ pub fn start_capture(app: AppHandle) -> Result<(), String> {
     let img = capture::capture_primary_monitor()?;
     {
         let state = app.state::<CaptureState>();
-        *state.0.lock().unwrap() = Some(img);
+        *state.0.lock().unwrap_or_else(|e| e.into_inner()) = Some(img);
     }
     let app2 = app.clone();
     app.run_on_main_thread(move || {
         if let Some(w) = app2.get_webview_window("overlay") {
             let _ = w.close();
         }
-        let res = WebviewWindowBuilder::new(
+        let mut builder = WebviewWindowBuilder::new(
             &app2,
             "overlay",
             WebviewUrl::App("overlay.html".into()),
         )
         .title("ScreenShotPP Overlay")
-        .fullscreen(true)
         .always_on_top(true)
         .decorations(false)
         .skip_taskbar(true)
         .focused(true)
-        .build();
-        if let Err(e) = res {
+        .resizable(false);
+
+        // Épingle l'overlay au moniteur principal pour que l'image affichée et
+        // la sélection partagent le même espace de coordonnées (le crop reste juste).
+        // La sélection multi-moniteur complète est repoussée à un palier ultérieur.
+        match app2.primary_monitor() {
+            Ok(Some(monitor)) => {
+                let pos = monitor.position();
+                let size = monitor.size();
+                let sf = monitor.scale_factor();
+                builder = builder
+                    .inner_size(size.width as f64 / sf, size.height as f64 / sf)
+                    .position(pos.x as f64 / sf, pos.y as f64 / sf);
+            }
+            _ => {
+                builder = builder.fullscreen(true);
+            }
+        }
+
+        if let Err(e) = builder.build() {
             eprintln!("Création de l'overlay échouée: {e}");
         }
     })
@@ -45,7 +62,7 @@ pub fn start_capture(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn get_capture_data_url(app: AppHandle) -> Result<String, String> {
     let state = app.state::<CaptureState>();
-    let guard = state.0.lock().unwrap();
+    let guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
     let img = guard.as_ref().ok_or("Aucune capture en cours")?;
     let png = storage::encode_image(img, storage::SaveFormat::Png)?;
     let b64 = base64::engine::general_purpose::STANDARD.encode(png);
@@ -91,7 +108,7 @@ pub fn cancel_capture(app: AppHandle) {
 
 fn with_cropped(app: &AppHandle, rect: Rect) -> Result<RgbaImage, String> {
     let state = app.state::<CaptureState>();
-    let guard = state.0.lock().unwrap();
+    let guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
     let img = guard.as_ref().ok_or("Aucune capture en cours")?;
     Ok(capture::crop_region(img, rect))
 }

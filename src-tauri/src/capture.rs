@@ -57,4 +57,20 @@ mod tests {
         let out = crop_region(&src, Rect { x: 10, y: 10, width: 0, height: 0 });
         assert_eq!(out.dimensions(), (1, 1));
     }
+
+    #[test]
+    fn crop_extracts_the_correct_pixels() {
+        // Image 4x4 : colonne gauche rouge, reste noir.
+        let mut src = RgbaImage::from_pixel(4, 4, image::Rgba([0, 0, 0, 255]));
+        for y in 0..4 {
+            src.put_pixel(0, y, image::Rgba([255, 0, 0, 255]));
+        }
+        // Recadre une zone 2x2 à partir de (1,1) : doit être entièrement noire.
+        let out = crop_region(&src, Rect { x: 1, y: 1, width: 2, height: 2 });
+        assert_eq!(out.dimensions(), (2, 2));
+        assert_eq!(*out.get_pixel(0, 0), image::Rgba([0, 0, 0, 255]));
+        // Recadre incluant la colonne gauche : pixel (0,0) doit être rouge.
+        let out2 = crop_region(&src, Rect { x: 0, y: 0, width: 2, height: 2 });
+        assert_eq!(*out2.get_pixel(0, 0), image::Rgba([255, 0, 0, 255]));
+    }
 }

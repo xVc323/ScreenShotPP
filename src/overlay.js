@@ -84,7 +84,13 @@ function physicalRect() {
 }
 
 async function doCopy() {
-  await invoke("copy_selection", { rect: physicalRect() });
+  try {
+    await invoke("copy_selection", { rect: physicalRect() });
+  } catch (e) {
+    console.error("Copy failed:", e);
+    window.alert("Copy failed: " + e);
+    await invoke("cancel_capture");
+  }
 }
 
 document.getElementById("copy-btn").addEventListener("click", doCopy);
@@ -92,18 +98,24 @@ document.getElementById("cancel-btn").addEventListener("click", () =>
   invoke("cancel_capture")
 );
 document.getElementById("save-btn").addEventListener("click", async () => {
-  const suggested = await invoke("default_save_name", { format: "png" });
-  const path = await dialog.save({
-    defaultPath: suggested,
-    filters: [
-      { name: "PNG", extensions: ["png"] },
-      { name: "JPEG", extensions: ["jpg", "jpeg"] },
-    ],
-  });
-  if (!path) return;
-  const lower = path.toLowerCase();
-  const format = lower.endsWith(".jpg") || lower.endsWith(".jpeg") ? "jpeg" : "png";
-  await invoke("save_selection", { rect: physicalRect(), path, format });
+  try {
+    const suggested = await invoke("default_save_name", { format: "png" });
+    const path = await dialog.save({
+      defaultPath: suggested,
+      filters: [
+        { name: "PNG", extensions: ["png"] },
+        { name: "JPEG", extensions: ["jpg", "jpeg"] },
+      ],
+    });
+    if (!path) return;
+    const lower = path.toLowerCase();
+    const format = lower.endsWith(".jpg") || lower.endsWith(".jpeg") ? "jpeg" : "png";
+    await invoke("save_selection", { rect: physicalRect(), path, format });
+  } catch (e) {
+    console.error("Save failed:", e);
+    window.alert("Save failed: " + e);
+    await invoke("cancel_capture");
+  }
 });
 
 window.addEventListener("resize", () => {
