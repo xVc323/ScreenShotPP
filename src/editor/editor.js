@@ -1,8 +1,10 @@
 import { History } from "./history.js";
 import { bubbleNumberAt } from "./bubbles.js";
 import { isEditableTarget } from "../editable-target.js";
+import { mosaicCrop } from "./mosaic.js";
 
 const MIN_SIZE = 2;
+const MOSAIC_PIXEL = 16;
 const FONT_FAMILY = "Arial";
 const BUBBLE_RADIUS = 15;
 const BUBBLE_FONT = 16;
@@ -147,6 +149,11 @@ export function createEditor(o = {}) {
       annotationLayer.draw();
       return;
     }
+    if (descriptor.type === "mosaic") {
+      const s = positiveNumber(o.scale, 1);
+      descriptor.cropX = descriptor.x * s;
+      descriptor.cropY = descriptor.y * s;
+    }
     annotations.push(cloneDescriptor(descriptor));
     node.destroy();
     renderAnnotations();
@@ -195,11 +202,12 @@ export function createEditor(o = {}) {
     if (kind === "ellipse") return { ...common, x: point.x, y: point.y, radiusX: 0, radiusY: 0 };
     if (kind === "line" || kind === "arrow") return { ...common, x: 0, y: 0, points: [point.x, point.y, point.x, point.y] };
     if (kind === "free") return { ...common, x: 0, y: 0, points: [point.x, point.y] };
+    if (kind === "mosaic") return { ...common, x: point.x, y: point.y, width: 0, height: 0, cropX: 0, cropY: 0 };
     return null;
   }
 
   function updateDraftDescriptor(descriptor, from, to) {
-    if (descriptor.type === "rect") Object.assign(descriptor, normalizedRect({ x: from.x, y: from.y, width: to.x - from.x, height: to.y - from.y }));
+    if (descriptor.type === "rect" || descriptor.type === "mosaic") Object.assign(descriptor, normalizedRect({ x: from.x, y: from.y, width: to.x - from.x, height: to.y - from.y }));
     else if (descriptor.type === "ellipse") Object.assign(descriptor, { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2, radiusX: Math.abs(to.x - from.x) / 2, radiusY: Math.abs(to.y - from.y) / 2 });
     else descriptor.points = [from.x, from.y, to.x, to.y];
   }
@@ -213,13 +221,27 @@ export function createEditor(o = {}) {
     else if (descriptor.type === "arrow") node = new Konva.Arrow({ ...common, x: descriptor.x, y: descriptor.y, points: descriptor.points });
     else if (descriptor.type === "free") node = new Konva.Line({ ...common, x: descriptor.x, y: descriptor.y, points: descriptor.points, tension: 0.4, lineCap: "round", lineJoin: "round" });
     else if (descriptor.type === "text") node = new Konva.Text({ id: descriptor.id, x: descriptor.x, y: descriptor.y, text: descriptor.text, fill: descriptor.fill, fontSize: descriptor.fontSize, fontFamily: FONT_FAMILY, draggable: tool === "select" });
+    else if (descriptor.type === "mosaic") {
+      if (descriptor.width <= 0 || descriptor.height <= 0) {
+        node = new Konva.Rect({ id: descriptor.id, x: descriptor.x, y: descriptor.y, width: descriptor.width, height: descriptor.height, fill: "rgba(0,0,0,0.55)", draggable: tool === "select" });
+      } else {
+        node = new Konva.Image({
+          id: descriptor.id, x: descriptor.x, y: descriptor.y,
+          width: descriptor.width, height: descriptor.height,
+          image: o.image, crop: mosaicCrop(descriptor, positiveNumber(o.scale, 1)),
+          draggable: tool === "select",
+          filters: [Konva.Filters.Pixelate], pixelSize: MOSAIC_PIXEL,
+        });
+        node.cache();
+      }
+    }
     else throw new Error(`Type d'annotation inconnu: ${descriptor.type}`);
     node.dragBoundFunc((position) => boundDragPosition(node, position));
     return node;
   }
 
   function applyDescriptor(node, descriptor) {
-    if (descriptor.type === "rect") node.setAttrs({ x: descriptor.x, y: descriptor.y, width: descriptor.width, height: descriptor.height });
+    if (descriptor.type === "rect" || descriptor.type === "mosaic") node.setAttrs({ x: descriptor.x, y: descriptor.y, width: descriptor.width, height: descriptor.height });
     else if (descriptor.type === "ellipse") node.setAttrs({ x: descriptor.x, y: descriptor.y, radiusX: descriptor.radiusX, radiusY: descriptor.radiusY });
     else node.setAttrs({ x: descriptor.x, y: descriptor.y, points: descriptor.points });
   }
@@ -299,8 +321,8 @@ export function createEditor(o = {}) {
     } else if (descriptor.type === "ellipse") {
       descriptor.radiusX = node.radiusX();
       descriptor.radiusY = node.radiusY();
-    } else if (descriptor.type === "text") {
-      // x/y déjà synchronisés ; texte et taille inchangés
+    } else if (descriptor.type === "text" || descriptor.type === "mosaic") {
+      // x/y déjà synchronisés ; contenu (texte/recadrage) inchangé
     } else {
       descriptor.points = [...node.points()];
     }
@@ -310,6 +332,7 @@ export function createEditor(o = {}) {
     if (descriptor.type === "rect") return descriptor.width < MIN_SIZE || descriptor.height < MIN_SIZE;
     if (descriptor.type === "ellipse") return descriptor.radiusX * 2 < MIN_SIZE || descriptor.radiusY * 2 < MIN_SIZE;
     if (descriptor.type === "text") return !descriptor.text || descriptor.text.trim() === "";
+    if (descriptor.type === "mosaic") return descriptor.width < MIN_SIZE || descriptor.height < MIN_SIZE;
     if (descriptor.type === "free") {
       let length = 0;
       const p = descriptor.points;
@@ -511,7 +534,7 @@ export function createEditor(o = {}) {
 
   return {
     setTool(value) {
-      if (!["select", "rect", "ellipse", "line", "arrow", "free", "text", "bubble"].includes(value)) throw new Error(`Outil inconnu: ${value}`);
+      if (!["select", "rect", "ellipse", "line", "arrow", "free", "text", "bubble", "mosaic"].includes(value)) throw new Error(`Outil inconnu: ${value}`);
       tool = value;
       if (tool !== "select") transformer.nodes([]);
       shapeGroup.getChildren().forEach((node) => node.draggable(tool === "select"));
