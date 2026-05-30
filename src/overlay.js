@@ -1,10 +1,13 @@
 import { createEditor } from "./editor/editor.js";
+import { createColorPicker } from "./color-picker.js";
 
 const { invoke } = window.__TAURI__.core;
 const dialog = window.__TAURI__.dialog;
 
 const toolbar = document.getElementById("toolbar");
 const thickness = document.getElementById("thickness");
+const fontsize = document.getElementById("fontsize");
+const customColor = document.getElementById("custom-color");
 const undoButton = document.getElementById("undo");
 const redoButton = document.getElementById("redo");
 const copyButton = document.getElementById("copy-btn");
@@ -26,6 +29,7 @@ redoButton.disabled = true;
       scale,
       color: document.querySelector(".swatch.active").dataset.color,
       strokeWidth: parseInt(thickness.value, 10),
+      fontSize: parseInt(fontsize.value, 10),
       onSelectionDone: (selection) => positionAndShowToolbar(selection),
       onHistoryChange: ({ canUndo, canRedo }) => {
         undoButton.disabled = !canUndo;
@@ -124,11 +128,26 @@ document.querySelectorAll(".swatch").forEach((button, index) => {
     document.querySelectorAll(".swatch").forEach((swatch) =>
       swatch.classList.toggle("active", swatch === button)
     );
+    customColor.classList.remove("active");
   });
+});
+const colorPicker = createColorPicker({
+  button: customColor,
+  initialHex: localStorage.getItem("customColor") || "#ff8800",
+  onChange: (hex) => {
+    if (editor) editor.setColor(hex);
+    localStorage.setItem("customColor", hex);
+    document.querySelectorAll(".swatch").forEach((swatch) => swatch.classList.remove("active"));
+    customColor.classList.add("active");
+  },
 });
 thickness.addEventListener("change", (event) => {
   if (!editor) return;
   editor.setStrokeWidth(parseInt(event.target.value, 10));
+});
+fontsize.addEventListener("change", (event) => {
+  if (!editor) return;
+  editor.setFontSize(parseInt(event.target.value, 10));
 });
 undoButton.addEventListener("click", () => editor?.undo());
 redoButton.addEventListener("click", () => editor?.redo());

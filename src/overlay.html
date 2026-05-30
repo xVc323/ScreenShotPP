@@ -16,18 +16,22 @@
       <button class="tool" data-tool="ellipse" title="Ellipse">◯</button>
       <button class="tool" data-tool="line" title="Line">╱</button>
       <button class="tool" data-tool="arrow" title="Arrow">↗</button>
+      <button class="tool" data-tool="free" title="Pencil">✎</button>
+      <button class="tool" data-tool="text" title="Text">A</button>
       <span class="sep"></span>
       <button class="swatch" data-color="#e5484d" style="background:#e5484d"></button>
       <button class="swatch" data-color="#4da3ff" style="background:#4da3ff"></button>
       <button class="swatch" data-color="#3fb950" style="background:#3fb950"></button>
       <button class="swatch" data-color="#f2cc60" style="background:#f2cc60"></button>
       <button class="swatch" data-color="#ffffff" style="background:#ffffff"></button>
+      <button id="custom-color" class="custom-color" title="Custom color"></button>
       <select id="thickness" title="Thickness">
         <option value="2">S</option>
         <option value="4" selected>M</option>
         <option value="8">L</option>
         <option value="14">XL</option>
       </select>
+      <input id="fontsize" type="number" min="6" max="300" value="24" title="Text size" />
       <span class="sep"></span>
       <button id="undo" title="Undo">↶</button>
       <button id="redo" title="Redo">↷</button>
