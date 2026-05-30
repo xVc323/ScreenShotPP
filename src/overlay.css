@@ -34,6 +34,7 @@
   background: #161b22; border: 1px solid #30363d; border-radius: 10px;
   display: flex; flex-direction: column; gap: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.5);
 }
+.cp-popover[hidden] { display: none; }
 .cp-sv { position: relative; width: 100%; height: 130px; border-radius: 6px; cursor: crosshair; }
 .cp-hue {
   position: relative; width: 100%; height: 14px; border-radius: 7px; cursor: pointer;
