@@ -19,6 +19,48 @@ impl Default for Settings {
     }
 }
 
+/// Charge des réglages depuis un chemin (défauts si absent/invalide).
+pub fn load_from_path(path: &std::path::Path) -> Settings {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+/// Écrit les réglages en JSON (crée le dossier parent au besoin).
+pub fn save_to_path(path: &std::path::Path, settings: &Settings) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
+    std::fs::write(path, json).map_err(|e| e.to_string())
+}
+
+/// Chemin du fichier de réglages dans le dossier de config de l'app.
+pub fn settings_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    use tauri::Manager;
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    Ok(dir.join("settings.json"))
+}
+
+/// Charge les réglages de l'app (défauts si absent).
+pub fn load(app: &tauri::AppHandle) -> Settings {
+    match settings_path(app) {
+        Ok(p) => load_from_path(&p),
+        Err(_) => Settings::default(),
+    }
+}
+
+/// Sauvegarde les réglages de l'app.
+pub fn save(app: &tauri::AppHandle, settings: &Settings) -> Result<(), String> {
+    let path = settings_path(app)?;
+    save_to_path(&path, settings)
+}
+
+/// Réglages courants partagés (chargés au démarrage).
+#[derive(Default)]
+pub struct SettingsState(pub std::sync::Mutex<Settings>);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -37,5 +79,23 @@ mod tests {
         let json = serde_json::to_string(&s).unwrap();
         let back: Settings = serde_json::from_str(&json).unwrap();
         assert_eq!(s, back);
+    }
+
+    #[test]
+    fn save_then_load_round_trips_through_a_file() {
+        let mut path = std::env::temp_dir();
+        path.push(format!("sspp-settings-{}.json", std::process::id()));
+        let mut s = Settings::default();
+        s.capture_shortcut = "CmdOrCtrl+Shift+9".to_string();
+        s.ocr_language = "fr-FR".to_string();
+        save_to_path(&path, &s).unwrap();
+        assert_eq!(load_from_path(&path), s);
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn loading_missing_file_yields_defaults() {
+        let path = std::path::Path::new("/tmp/sspp-does-not-exist-xyz123.json");
+        assert_eq!(load_from_path(path), Settings::default());
     }
 }

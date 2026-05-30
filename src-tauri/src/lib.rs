@@ -8,6 +8,7 @@ mod commands;
 mod ocr;
 
 use commands::CaptureState;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -24,6 +25,10 @@ pub fn run() {
             commands::cancel_capture,
             commands::ocr_region,
             commands::copy_text,
+            commands::get_settings,
+            commands::update_settings,
+            commands::default_save_path,
+            commands::app_version,
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
@@ -33,8 +38,19 @@ pub fn run() {
 
             tray::build_tray(app)?;
 
-            let settings = settings::Settings::default();
+            let settings = settings::load(app.handle());
             hotkey::register_capture_shortcut(app.handle(), &settings.capture_shortcut)?;
+            app.manage(settings::SettingsState(std::sync::Mutex::new(settings)));
+
+            if let Some(main) = app.get_webview_window("main") {
+                let hidden = main.clone();
+                main.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = hidden.hide();
+                    }
+                });
+            }
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -121,6 +121,13 @@ pub fn default_save_name(format: String) -> String {
 
 #[tauri::command]
 pub async fn ocr_region(app: AppHandle, rect: capture::Rect) -> Result<String, String> {
+    let lang = app
+        .state::<crate::settings::SettingsState>()
+        .0
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .ocr_language
+        .clone();
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<CaptureState>();
         let cropped = {
@@ -128,7 +135,7 @@ pub async fn ocr_region(app: AppHandle, rect: capture::Rect) -> Result<String, S
             let img = guard.as_ref().ok_or("Aucune capture en cours")?;
             capture::crop_region(img, rect)
         };
-        crate::ocr::recognize(&cropped)
+        crate::ocr::recognize(&cropped, &lang)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -138,6 +145,55 @@ pub async fn ocr_region(app: AppHandle, rect: capture::Rect) -> Result<String, S
 pub fn copy_text(app: AppHandle, text: String) -> Result<(), String> {
     use tauri_plugin_clipboard_manager::ClipboardExt;
     app.clipboard().write_text(text).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_settings(app: AppHandle) -> crate::settings::Settings {
+    app.state::<crate::settings::SettingsState>()
+        .0
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
+#[tauri::command]
+pub fn update_settings(
+    app: AppHandle,
+    new_settings: crate::settings::Settings,
+) -> Result<(), String> {
+    crate::hotkey::reregister(&app, &new_settings.capture_shortcut)?;
+    crate::settings::save(&app, &new_settings)?;
+    *app.state::<crate::settings::SettingsState>()
+        .0
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = new_settings;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn default_save_path(app: AppHandle, format: String) -> String {
+    let folder = app
+        .state::<crate::settings::SettingsState>()
+        .0
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .default_save_folder
+        .clone();
+    let name = storage::current_filename(storage::SaveFormat::from_str(&format));
+    let dir = if folder.is_empty() {
+        app.path().desktop_dir().ok()
+    } else {
+        Some(std::path::PathBuf::from(folder))
+    };
+    match dir {
+        Some(d) => d.join(name).to_string_lossy().to_string(),
+        None => name,
+    }
+}
+
+#[tauri::command]
+pub fn app_version(app: AppHandle) -> String {
+    app.package_info().version.to_string()
 }
 
 /// Ferme l'overlay (annulation depuis l'interface).

@@ -14,3 +14,9 @@ pub fn register_capture_shortcut(app: &AppHandle, accelerator: &str) -> Result<(
         })
         .map_err(|e| format!("Échec d'enregistrement du raccourci {acc}: {e}"))
 }
+
+/// Désenregistre tout puis enregistre le raccourci de capture courant.
+pub fn reregister(app: &AppHandle, accelerator: &str) -> Result<(), String> {
+    let _ = app.global_shortcut().unregister_all();
+    register_capture_shortcut(app, accelerator)
+}
