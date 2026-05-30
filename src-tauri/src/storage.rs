@@ -1,5 +1,6 @@
 use chrono::{Local, NaiveDateTime};
-use image::{ImageFormat, RgbaImage};
+use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+use image::{ExtendedColorType, ImageEncoder, ImageFormat, RgbaImage};
 use std::io::Cursor;
 
 /// Format d'image supporté au Palier 1.
@@ -56,6 +57,22 @@ pub fn encode_image(img: &RgbaImage, format: SaveFormat) -> Result<Vec<u8>, Stri
     Ok(buf.into_inner())
 }
 
+/// Encodage PNG rapide (compression Fast, sans filtre) pour l'affichage éphémère
+/// dans l'overlay — privilégie la vitesse sur la taille. La sauvegarde disque
+/// continue d'utiliser `encode_image` (compression normale).
+pub fn encode_png_fast(img: &RgbaImage) -> Result<Vec<u8>, String> {
+    let mut buf = Vec::new();
+    PngEncoder::new_with_quality(&mut buf, CompressionType::Fast, FilterType::NoFilter)
+        .write_image(
+            img.as_raw(),
+            img.width(),
+            img.height(),
+            ExtendedColorType::Rgba8,
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(buf)
+}
+
 /// Écrit les octets encodés sur le disque.
 pub fn write_to_disk(path: &str, bytes: &[u8]) -> Result<(), String> {
     std::fs::write(path, bytes).map_err(|e| e.to_string())
@@ -94,6 +111,13 @@ mod tests {
         let img = RgbaImage::new(4, 4);
         let bytes = encode_image(&img, SaveFormat::Jpeg).unwrap();
         assert_eq!(&bytes[0..2], &[0xFF, 0xD8]); // JPEG SOI
+    }
+
+    #[test]
+    fn fast_png_encoding_starts_with_png_magic_bytes() {
+        let img = RgbaImage::new(8, 8);
+        let bytes = encode_png_fast(&img).unwrap();
+        assert_eq!(&bytes[0..4], &[0x89, 0x50, 0x4E, 0x47]);
     }
 
     #[test]

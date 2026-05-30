@@ -32,7 +32,8 @@ pub fn start_capture(app: AppHandle) -> Result<(), String> {
         .decorations(false)
         .skip_taskbar(true)
         .focused(true)
-        .resizable(false);
+        .resizable(false)
+        .background_color(tauri::webview::Color(0, 0, 0, 255));
 
         // Épingle l'overlay au moniteur principal pour que l'image affichée et
         // la sélection partagent le même espace de coordonnées (le crop reste juste).
@@ -64,7 +65,7 @@ pub fn get_capture_data_url(app: AppHandle) -> Result<String, String> {
     let state = app.state::<CaptureState>();
     let guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
     let img = guard.as_ref().ok_or("Aucune capture en cours")?;
-    let png = storage::encode_image(img, storage::SaveFormat::Png)?;
+    let png = storage::encode_png_fast(img)?;
     let b64 = base64::engine::general_purpose::STANDARD.encode(png);
     Ok(format!("data:image/png;base64,{b64}"))
 }
