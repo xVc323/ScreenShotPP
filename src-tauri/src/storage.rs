@@ -73,6 +73,13 @@ pub fn encode_png_fast(img: &RgbaImage) -> Result<Vec<u8>, String> {
     Ok(buf)
 }
 
+/// Décode des octets PNG en image RGBA.
+pub fn decode_png_to_rgba(png: &[u8]) -> Result<RgbaImage, String> {
+    image::load_from_memory_with_format(png, ImageFormat::Png)
+        .map_err(|e| e.to_string())
+        .map(|img| img.to_rgba8())
+}
+
 /// Écrit les octets encodés sur le disque.
 pub fn write_to_disk(path: &str, bytes: &[u8]) -> Result<(), String> {
     std::fs::write(path, bytes).map_err(|e| e.to_string())
@@ -124,5 +131,15 @@ mod tests {
     fn format_from_str_defaults_to_png() {
         assert_eq!(SaveFormat::from_str("webp"), SaveFormat::Png);
         assert_eq!(SaveFormat::from_str("jpg"), SaveFormat::Jpeg);
+    }
+
+    #[test]
+    fn png_round_trip_preserves_dimensions_and_pixels() {
+        let mut img = RgbaImage::from_pixel(6, 4, image::Rgba([0, 0, 0, 255]));
+        img.put_pixel(0, 0, image::Rgba([12, 34, 56, 255]));
+        let png = encode_image(&img, SaveFormat::Png).unwrap();
+        let back = decode_png_to_rgba(&png).unwrap();
+        assert_eq!(back.dimensions(), (6, 4));
+        assert_eq!(*back.get_pixel(0, 0), image::Rgba([12, 34, 56, 255]));
     }
 }
