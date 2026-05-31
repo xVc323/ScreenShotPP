@@ -35,6 +35,7 @@ pub fn start_capture(app: AppHandle) -> Result<(), String> {
         .skip_taskbar(true)
         .focused(true)
         .resizable(false)
+        .visible(false)
         .background_color(tauri::webview::Color(0, 0, 0, 255));
 
         // Épingle l'overlay au moniteur Tauri sous le curseur (même écran que la capture),
@@ -212,6 +213,15 @@ pub fn app_version(app: AppHandle) -> String {
 #[tauri::command]
 pub fn cancel_capture(app: AppHandle) {
     close_overlay(&app);
+}
+
+/// Affiche l'overlay (appelé par le frontend une fois la capture peinte) → pas de flash noir.
+#[tauri::command]
+pub fn show_overlay(app: AppHandle) {
+    if let Some(w) = app.get_webview_window("overlay") {
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
 }
 
 fn close_overlay(app: &AppHandle) {

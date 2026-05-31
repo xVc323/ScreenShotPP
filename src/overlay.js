@@ -46,6 +46,12 @@ redoButton.disabled = true;
       },
     });
     setActiveTool("select");
+    // Affiche l'overlay seulement une fois la capture peinte (2 frames) → pas de flash noir.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        invoke("show_overlay").catch(() => {});
+      })
+    );
   } catch (error) {
     console.error("Initialization failed:", error);
     window.alert("Initialization failed: " + error);
