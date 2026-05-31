@@ -1,4 +1,4 @@
-# README demo GIF — Exhaustive walkthrough design
+# README demo GIF — Practical financial-report walkthrough design
 
 - **Date:** 2026-05-31
 - **Status:** Approved design
@@ -7,41 +7,37 @@
 
 ## 1. Goal
 
-Replace the current README GIF with a deterministic, exhaustive ScreenShotPP walkthrough that demonstrates the complete editing surface clearly while remaining lightweight enough for the repository front page.
+Replace the current README GIF with a deterministic, practical ScreenShotPP walkthrough that tells one coherent user story while remaining lightweight enough for the repository front page.
 
 The demo must use the existing Playwright-based generator rather than recording the desktop application manually. This keeps regeneration reproducible and avoids exposing personal desktop content.
 
 ## 2. Storyline
 
-The animation follows one linear tutorial over the existing sample financial sheet:
+The animation follows one practical scenario: prepare a financial-report excerpt before sharing it with a colleague.
 
-1. select a capture region;
-2. open the custom color picker;
-3. move the picker controls to show arbitrary color selection;
-4. type an explicit hexadecimal value, `#7c3aed`;
-5. use each of the nine editing tools in a visible, meaningful way:
-   - select / move;
-   - rectangle;
-   - ellipse;
-   - line;
-   - arrow;
-   - pencil;
-   - text;
-   - numbered bubble;
-   - mosaic blur;
-6. show undo and redo briefly;
-7. switch output size from `Full` to `≤1MB`;
-8. open the OCR panel and end with the recognized text visible.
+1. select the useful report region;
+2. mask the account number with mosaic blur;
+3. open the custom color picker and type the explicit hexadecimal value `#7c3aed`;
+4. draw a rectangle around net operating income;
+5. draw an ellipse around the unusual `+9.3%` increase;
+6. add an arrow pointing to that increase;
+7. add the text note `Review unusual increase`;
+8. add two numbered bubbles to identify lines that need review;
+9. use Select to move one annotation into a better position;
+10. show undo and redo briefly to demonstrate correction;
+11. switch output size from `Full` to `≤1MB`;
+12. open the OCR panel and end with the recognized text visible.
 
-`Save` and `Copy` are intentionally excluded: they do not add useful visual information to the README demo.
+`Save`, `Copy`, line, and pencil are intentionally excluded: they do not add useful visual information to this particular sharing workflow. The README demo prioritizes a credible user story over exhaustive toolbar coverage.
 
 ## 3. Visual principles
 
 - Preserve the current 1280×720 sample financial sheet and faithful overlay styling.
 - Keep the cursor visible and move it through deterministic waypoints.
 - Highlight active controls so each interaction remains understandable at README scale.
+- Use mosaic before color selection to protect the account number immediately.
 - Use the custom purple `#7c3aed` for annotations created after color selection.
-- Avoid excessive overlap: each tool receives a distinct target area.
+- Every annotation must communicate a visible business intent; avoid decorative marks.
 - Hold key states briefly: picker with hex value, undo/redo, `≤1MB`, and OCR panel.
 - Target a 20–25 second loop.
 
@@ -76,7 +72,7 @@ A completed demo passes when:
 
 - `bash docs/demo/generate.sh` regenerates the GIF from scratch;
 - `docs/assets/screenshotpp-demo.gif` is strictly below 5,000,000 bytes;
-- a contact sheet sampled across the timeline visibly confirms all nine tools, the picker, the hexadecimal input, undo/redo, `≤1MB`, and OCR;
+- a contact sheet sampled across the timeline visibly confirms the coherent financial-report scenario: mosaic redaction, picker, hexadecimal input, rectangle, ellipse, arrow, note, two bubbles, select/move, undo/redo, `≤1MB`, and OCR;
 - `scripts/check-release-readiness.sh` passes;
 - `git diff --check` passes;
 - no unrelated user changes are included in the demo commit.

@@ -1,10 +1,10 @@
-# README Demo GIF Exhaustive Walkthrough Implementation Plan
+# README Demo GIF Practical Financial Walkthrough Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Extend the deterministic Playwright README GIF so it visibly demonstrates every editing tool, custom color selection with an explicit hexadecimal value, undo/redo, `≤1MB` output sizing, and OCR while remaining strictly below 5,000,000 bytes.
+**Goal:** Extend the deterministic Playwright README GIF so it tells one coherent financial-report sharing story with redaction, meaningful annotations, custom hexadecimal color, correction, `≤1MB` output sizing, and OCR while remaining strictly below 5,000,000 bytes.
 
-**Architecture:** Keep the current browser-only demo renderer isolated under `docs/demo/`. Mirror the production overlay controls in `demo.html`, drive a deterministic timeline from `renderer.js`, expose semantic checkpoints for automated Playwright assertions, then regenerate the committed GIF with a size-enforcing FFmpeg pipeline.
+**Architecture:** Keep the current browser-only demo renderer isolated under `docs/demo/`. Mirror the production overlay controls in `demo.html`, drive a deterministic timeline from `renderer.js`, expose scenario checkpoints for automated Playwright assertions, then regenerate the committed GIF with a size-enforcing FFmpeg pipeline.
 
 **Tech Stack:** HTML/CSS, browser Canvas 2D, Node.js, Playwright 1.60.0, FFmpeg, ImageMagick.
 
@@ -398,7 +398,7 @@ Update `docs/demo/README.md` to state:
 
 `docs/assets/screenshotpp-demo.gif` is generated from a deterministic Playwright animation. It replays the full ScreenShotPP editing workflow over a sample financial sheet without recording a personal desktop.
 
-The walkthrough shows region selection, custom color selection, explicit hexadecimal input (`#7c3aed`), all nine editing tools, undo/redo, `≤1MB` output sizing, and OCR. Save and Copy are intentionally omitted because they do not add useful visual information to the README.
+The walkthrough shows region selection, custom color selection, explicit hexadecimal input (`#7c3aed`), all meaningful scenario annotations, undo/redo, `≤1MB` output sizing, and OCR. Save and Copy are intentionally omitted because they do not add useful visual information to the README.
 
 ## Regenerate and verify
 
@@ -484,7 +484,7 @@ for index in "${indexes[@]}"; do selected+=("${frames[$index]}"); done
 magick "${selected[@]}" +append /tmp/screenshotpp-demo-contact-sheet.png
 ```
 
-Inspect `/tmp/screenshotpp-demo-contact-sheet.png`. Confirm the sheet contains the picker with `#7c3aed`, distinct annotation states for all nine tools, undo/redo, `≤1MB`, and OCR.
+Inspect `/tmp/screenshotpp-demo-contact-sheet.png`. Confirm the sheet contains the picker with `#7c3aed`, distinct annotation states for the scenario annotations, undo/redo, `≤1MB`, and OCR.
 
 - [ ] **Step 4: Commit only the generated GIF**
 
