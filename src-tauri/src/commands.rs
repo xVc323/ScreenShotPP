@@ -36,7 +36,7 @@ pub fn start_capture(app: AppHandle) -> Result<(), String> {
         .focused(true)
         .resizable(false)
         .visible(false)
-        .background_color(tauri::webview::Color(0, 0, 0, 255));
+        .transparent(true);
 
         // Épingle l'overlay au moniteur Tauri sous le curseur (même écran que la capture),
         // pour que l'image affichée et la sélection partagent le même espace de coordonnées.

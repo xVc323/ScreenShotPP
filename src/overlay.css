@@ -1,5 +1,5 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
-.overlay-body { overflow: hidden; cursor: crosshair; user-select: none; background: #000; }
+.overlay-body { overflow: hidden; cursor: crosshair; user-select: none; background: transparent; }
 #stage { position: fixed; inset: 0; width: 100vw; height: 100vh; }
 .toolbar {
   position: fixed; top: 0; left: 0;
