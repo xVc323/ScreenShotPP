@@ -12,6 +12,14 @@ if [ ! -d node_modules/playwright ]; then
   npx playwright install chromium
 fi
 
+asset_dir=../assets
+mkdir -p "$asset_dir"
+temp_dir=$(mktemp -d "$asset_dir/.screenshotpp-demo.XXXXXX")
+candidate="$temp_dir/screenshotpp-demo.gif"
+cleanup() { rm -rf frames palette.png "$temp_dir"; }
+trap cleanup EXIT
+
+node verify.mjs
 rm -rf frames palette.png
 node capture.mjs
 
@@ -19,7 +27,13 @@ ffmpeg -y -framerate 18 -i frames/f_%04d.png \
   -vf "scale=960:-1:flags=lanczos,palettegen=stats_mode=diff" palette.png -loglevel error
 ffmpeg -y -framerate 18 -i frames/f_%04d.png -i palette.png \
   -lavfi "scale=960:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle" \
-  ../assets/screenshotpp-demo.gif -loglevel error
+  "$candidate" -loglevel error
 
-rm -rf frames palette.png
-echo "Wrote docs/assets/screenshotpp-demo.gif ($(stat -f%z ../assets/screenshotpp-demo.gif 2>/dev/null || stat -c%s ../assets/screenshotpp-demo.gif) bytes)"
+bytes=$(stat -f%z "$candidate" 2>/dev/null || stat -c%s "$candidate")
+if (( bytes >= 5000000 )); then
+  echo "README demo GIF is too large: $bytes bytes (must be under 5000000)" >&2
+  exit 1
+fi
+
+mv "$candidate" "$asset_dir/screenshotpp-demo.gif"
+echo "Wrote docs/assets/screenshotpp-demo.gif ($bytes bytes)"

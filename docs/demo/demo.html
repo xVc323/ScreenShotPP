@@ -52,7 +52,30 @@
     border: 1px solid #30363d; border-radius: 50%; background: #ff8800; }
   .toolbar #copy-btn, .toolbar #save-btn, .toolbar #cancel-btn, .toolbar #ocr-btn { padding: 0 12px; min-width: 0; }
   .sep { width: 1px; height: 22px; background: #30363d; margin: 0 4px; }
+  .toolbar #thickness { width: 40px; padding: 0 5px; }
+  .toolbar #undo, .toolbar #redo { min-width: 30px; }
   .toolbar #output-size { width: 80px; padding: 0 6px; }
+  .toolbar select.changed { outline: 2px solid #4da3ff; }
+  .toolbar button.flash { outline: 2px solid #4da3ff; }
+
+  .cp-popover {
+    position: absolute; z-index: 30; width: 212px; padding: 10px;
+    background: #161b22; border: 1px solid #30363d; border-radius: 9px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.5); opacity: 0; transform: scale(.96);
+    transform-origin: top left;
+  }
+  .cp-popover[hidden] { display: none; }
+  .cp-sv { position: relative; height: 110px; border-radius: 5px;
+    background: linear-gradient(to top, #000, rgba(0,0,0,0)), linear-gradient(to right, #fff, rgba(255,255,255,0)), #7c3aed; }
+  .cp-sv-cursor, .cp-hue-cursor { position: absolute; border: 2px solid #fff; box-shadow: 0 0 0 1px #000; }
+  .cp-sv-cursor { width: 12px; height: 12px; border-radius: 50%; transform: translate(-50%, -50%); }
+  .cp-hue { position: relative; height: 12px; margin-top: 9px; border-radius: 5px;
+    background: linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00); }
+  .cp-hue-cursor { top: -2px; width: 5px; height: 16px; border-radius: 3px; transform: translateX(-50%); }
+  .cp-row { display: flex; gap: 8px; align-items: center; margin-top: 9px; }
+  .cp-preview { width: 24px; height: 24px; border-radius: 50%; background: #7c3aed; border: 1px solid #30363d; }
+  .cp-hex { flex: 1; height: 27px; padding: 0 7px; color: #e6edf3; background: #0d1117;
+    border: 1px solid #30363d; border-radius: 5px; font: 13px ui-monospace, "SF Mono", Menlo, monospace; }
 
   .ocr-panel {
     position: absolute; z-index: 40; left: 50%; top: 52%; transform: translate(-50%, -50%) scale(.96); opacity: 0;
@@ -117,15 +140,26 @@
     <button class="swatch" data-color="#3fb950" style="background:#3fb950"></button>
     <button class="swatch" data-color="#f2cc60" style="background:#f2cc60"></button>
     <button class="swatch" data-color="#ffffff" style="background:#ffffff"></button>
-    <button id="custom-color" class="custom-color"></button>
+    <button id="custom-color" class="custom-color" title="Custom color"></button>
+    <select id="thickness" title="Thickness"><option>S</option><option selected>M</option><option>L</option><option>XL</option></select>
+    <input id="fontsize" type="number" value="24" title="Text size" />
     <span class="sep"></span>
-    <input id="fontsize" type="number" value="24" />
+    <button id="undo" title="Undo">↶</button>
+    <button id="redo" title="Redo">↷</button>
     <span class="sep"></span>
-    <select id="output-size"><option>Full</option></select>
+    <select id="output-size" title="Output size">
+      <option>Full</option><option>≤5MB</option><option>≤2MB</option><option>≤1MB</option>
+    </select>
     <button id="ocr-btn">OCR</button>
     <button id="copy-btn">Copy</button>
     <button id="save-btn">Save</button>
     <button id="cancel-btn">Cancel</button>
+  </div>
+
+  <div class="cp-popover" id="color-picker" hidden>
+    <div class="cp-sv"><span class="cp-sv-cursor"></span></div>
+    <div class="cp-hue"><span class="cp-hue-cursor"></span></div>
+    <div class="cp-row"><span class="cp-preview"></span><input class="cp-hex" value="#7c3aed" readonly /></div>
   </div>
 
   <div class="ocr-panel" id="ocr-panel">
