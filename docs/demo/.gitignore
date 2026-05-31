@@ -1,0 +1,6 @@
+node_modules/
+frames/
+palette.png
+package.json
+package-lock.json
+out.gif
