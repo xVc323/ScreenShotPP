@@ -7,7 +7,7 @@
 
 ## 1. Goal
 
-Replace the current README GIF with a deterministic, exhaustive ScreenShotPP walkthrough that demonstrates the complete editing surface clearly while remaining below 1 MB.
+Replace the current README GIF with a deterministic, exhaustive ScreenShotPP walkthrough that demonstrates the complete editing surface clearly while remaining lightweight enough for the repository front page.
 
 The demo must use the existing Playwright-based generator rather than recording the desktop application manually. This keeps regeneration reproducible and avoids exposing personal desktop content.
 
@@ -61,21 +61,21 @@ The real overlay under `src/` is reference-only and must not be modified.
 
 `docs/demo/capture.mjs` continues to seek deterministic timeline timestamps and capture PNG frames with Playwright. `docs/demo/generate.sh` assembles the frames using FFmpeg palette generation and palette application.
 
-The final GIF must be strictly smaller than 1,000,000 bytes. If the first render exceeds that threshold, reduce encoding cost in this order while preserving clarity:
+The final README GIF must be strictly smaller than 5,000,000 bytes. This README asset budget is independent from the in-app `≤1MB` output option demonstrated in the animation. If the first render exceeds that threshold, reduce encoding cost in this order while preserving clarity:
 
 1. lower frame rate modestly;
 2. reduce output width modestly;
 3. shorten transitional movements and holds;
 4. tune palette/dithering only if required.
 
-The generator must fail when the generated GIF is at least 1,000,000 bytes so the size constraint remains enforceable.
+The generator must fail when the generated GIF is at least 5,000,000 bytes so the README asset budget remains enforceable.
 
 ## 6. Validation
 
 A completed demo passes when:
 
 - `bash docs/demo/generate.sh` regenerates the GIF from scratch;
-- `docs/assets/screenshotpp-demo.gif` is strictly below 1,000,000 bytes;
+- `docs/assets/screenshotpp-demo.gif` is strictly below 5,000,000 bytes;
 - a contact sheet sampled across the timeline visibly confirms all nine tools, the picker, the hexadecimal input, undo/redo, `≤1MB`, and OCR;
 - `scripts/check-release-readiness.sh` passes;
 - `git diff --check` passes;

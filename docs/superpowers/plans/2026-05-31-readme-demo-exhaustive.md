@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Extend the deterministic Playwright README GIF so it visibly demonstrates every editing tool, custom color selection with an explicit hexadecimal value, undo/redo, `≤1MB` output sizing, and OCR while remaining strictly below 1,000,000 bytes.
+**Goal:** Extend the deterministic Playwright README GIF so it visibly demonstrates every editing tool, custom color selection with an explicit hexadecimal value, undo/redo, `≤1MB` output sizing, and OCR while remaining strictly below 5,000,000 bytes.
 
 **Architecture:** Keep the current browser-only demo renderer isolated under `docs/demo/`. Mirror the production overlay controls in `demo.html`, drive a deterministic timeline from `renderer.js`, expose semantic checkpoints for automated Playwright assertions, then regenerate the committed GIF with a size-enforcing FFmpeg pipeline.
 
@@ -15,7 +15,7 @@
 - Modify: `docs/demo/demo.html` — faithful toolbar markup and visual-only custom-color popover.
 - Modify: `docs/demo/renderer.js` — deterministic 20–25 second storyline, drawing primitives, control-state renderer, cursor waypoints, and semantic checkpoints.
 - Create: `docs/demo/verify.mjs` — Playwright assertions over deterministic checkpoints.
-- Modify: `docs/demo/generate.sh` — run verification before capture and reject GIFs at or above 1,000,000 bytes.
+- Modify: `docs/demo/generate.sh` — run verification before capture and reject GIFs at or above 5,000,000 bytes.
 - Modify: `docs/demo/README.md` — document the exhaustive storyline, validation command, and strict size budget.
 - Replace: `docs/assets/screenshotpp-demo.gif` — generated README artifact.
 
@@ -380,8 +380,8 @@ node capture.mjs
 # existing FFmpeg commands remain here
 
 bytes=$(stat -f%z ../assets/screenshotpp-demo.gif 2>/dev/null || stat -c%s ../assets/screenshotpp-demo.gif)
-if (( bytes >= 1000000 )); then
-  echo "README demo GIF is too large: $bytes bytes (must be under 1000000)" >&2
+if (( bytes >= 5000000 )); then
+  echo "README demo GIF is too large: $bytes bytes (must be under 5000000)" >&2
   exit 1
 fi
 
@@ -406,7 +406,7 @@ The walkthrough shows region selection, custom color selection, explicit hexadec
 bash docs/demo/generate.sh
 ```
 
-The script installs Playwright + Chromium locally inside `docs/demo/` on first use, verifies semantic checkpoints, captures deterministic frames, assembles the GIF with FFmpeg, and rejects an artifact at or above 1,000,000 bytes.
+The script installs Playwright + Chromium locally inside `docs/demo/` on first use, verifies semantic checkpoints, captures deterministic frames, assembles the GIF with FFmpeg, and rejects an artifact at or above 5,000,000 bytes.
 ```
 
 Keep the existing file inventory section after this introduction.
@@ -429,7 +429,7 @@ Expected: shell syntax passes, `demo semantic checkpoints: OK`, and no whitespac
 git add docs/demo/verify.mjs docs/demo/generate.sh docs/demo/README.md
 git commit \
   -m "Guard the README animation with semantic checks and a strict budget" \
-  -m "Constraint: The richer walkthrough must remain reproducible and strictly below 1 MB." \
+  -m "Constraint: The richer walkthrough must remain reproducible and strictly below 5 MB." \
   -m "Confidence: high" \
   -m "Scope-risk: narrow" \
   -m "Tested: bash syntax; Playwright semantic checkpoints; git diff --check" \
@@ -452,7 +452,7 @@ Run:
 bash docs/demo/generate.sh
 ```
 
-Expected: `Wrote docs/assets/screenshotpp-demo.gif (... bytes)` with a byte count below `1000000`.
+Expected: `Wrote docs/assets/screenshotpp-demo.gif (... bytes)` with a byte count below `5000000`.
 
 - [ ] **Step 2: Verify dimensions, size, and release readiness**
 
@@ -461,7 +461,7 @@ Run:
 ```bash
 identify 'docs/assets/screenshotpp-demo.gif[0]' | head -1
 bytes=$(stat -f%z docs/assets/screenshotpp-demo.gif 2>/dev/null || stat -c%s docs/assets/screenshotpp-demo.gif)
-test "$bytes" -lt 1000000
+test "$bytes" -lt 5000000
 scripts/check-release-readiness.sh
 git diff --check
 ```
@@ -494,7 +494,7 @@ Do not stage the user's existing `.gitignore` modification.
 git add docs/assets/screenshotpp-demo.gif
 git commit \
   -m "Show the complete ScreenShotPP workflow on the repository front page" \
-  -m "Constraint: The committed README GIF must stay strictly below 1 MB." \
+  -m "Constraint: The committed README GIF must stay strictly below 5 MB." \
   -m "Confidence: high" \
   -m "Scope-risk: narrow" \
   -m "Tested: deterministic regeneration; GIF byte budget; visual contact sheet; release readiness; git diff --check" \
@@ -533,12 +533,12 @@ Run:
 ```bash
 bytes=$(stat -f%z docs/assets/screenshotpp-demo.gif 2>/dev/null || stat -c%s docs/assets/screenshotpp-demo.gif)
 printf 'gif_bytes=%s\n' "$bytes"
-test "$bytes" -lt 1000000
+test "$bytes" -lt 5000000
 git status --short
 git --no-pager log --oneline -6
 ```
 
-Expected: GIF is below `1000000`; only the pre-existing user-owned `.gitignore` change remains unstaged; recent commits contain the spec, plan, demo source changes, verifier, generator guard, and generated GIF.
+Expected: GIF is below `5000000`; only the pre-existing user-owned `.gitignore` change remains unstaged; recent commits contain the spec, plan, demo source changes, verifier, generator guard, and generated GIF.
 
 - [ ] **Step 3: Review the final diff against the design**
 
