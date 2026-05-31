@@ -46,6 +46,7 @@ pub fn run() {
             commands::update_settings,
             commands::default_save_path,
             commands::app_version,
+            commands::show_overlay,
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]

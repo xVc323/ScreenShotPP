@@ -46,6 +46,10 @@ redoButton.disabled = true;
       },
     });
     setActiveTool("select");
+    // La capture est déjà dessinée sur le canvas (draw() Konva synchrone) ; on affiche
+    // maintenant. Pas de requestAnimationFrame : il ne se déclenche pas dans une fenêtre
+    // masquée, ce qui laisserait l'overlay caché à jamais.
+    invoke("show_overlay").catch(() => {});
   } catch (error) {
     console.error("Initialization failed:", error);
     window.alert("Initialization failed: " + error);
