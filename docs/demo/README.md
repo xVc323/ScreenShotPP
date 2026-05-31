@@ -10,7 +10,7 @@ The walkthrough tells one practical story: prepare a financial-report excerpt be
 - `renderer.js` — a deterministic renderer exposing `window.seek(t_ms)` and semantic checkpoints; it draws the editing storyline on a canvas and toggles toolbar, picker, output-size, and OCR states.
 - `verify.mjs` — Playwright assertions for mosaic redaction, picker, hex value, meaningful annotations, select/move, undo/redo, `≤1MB`, OCR, and timeline duration.
 - `capture.mjs` — Playwright script that loads the page off-screen and screenshots one PNG per frame by seeking the timeline without real-time flakiness.
-- `generate.sh` — verifies checkpoints, captures frames, assembles the GIF with FFmpeg, and atomically replaces the README asset only when it is below 5 MB.
+- `generate.sh` — verifies checkpoints, discards one Chromium warm-up capture, captures stable frames, assembles the GIF with FFmpeg, and atomically replaces the README asset only when it is below 5 MB.
 
 ## Regenerate and verify
 

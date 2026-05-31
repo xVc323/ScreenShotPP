@@ -21,6 +21,11 @@ trap cleanup EXIT
 
 node verify.mjs
 rm -rf frames palette.png
+# Chromium's first screenshot pass after a cold install can measure the overlay
+# before its stable layout is painted. Discard one full pass so the committed
+# artifact always comes from the warmed, reproducible geometry.
+node capture.mjs >/dev/null
+rm -rf frames
 node capture.mjs
 
 ffmpeg -y -framerate 18 -i frames/f_%04d.png \
