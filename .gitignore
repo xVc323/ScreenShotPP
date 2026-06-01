@@ -29,8 +29,10 @@ lerna-debug.log*
 # Local env files
 *.local
 
-# Signing / notarization secrets — never commit
+# Signing / notarization secrets & certificates — never commit
 *.p12
 *.p8
+*.cer
+*.pem
 AuthKey_*.p8
 Certificates.p12
