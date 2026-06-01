@@ -1,6 +1,18 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 .overlay-body { overflow: hidden; cursor: crosshair; user-select: none; background: transparent; }
 #stage { position: fixed; inset: 0; width: 100vw; height: 100vh; }
+.loupe {
+  position: fixed; z-index: 25; pointer-events: none; display: flex; flex-direction: column;
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px; overflow: hidden;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+}
+.loupe[hidden] { display: none; }
+.loupe canvas { display: block; width: 140px; height: 140px; image-rendering: pixelated; }
+.loupe-info {
+  display: flex; justify-content: space-between; gap: 10px; padding: 4px 8px;
+  font: 11px ui-monospace, monospace; color: #e6edf3; background: #0d1117;
+}
+.loupe-info span { white-space: nowrap; }
 .toolbar {
   position: fixed; top: 0; left: 0;
   display: flex; align-items: center; gap: 6px; padding: 7px 9px;

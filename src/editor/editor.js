@@ -1,5 +1,5 @@
 import { History } from "./history.js";
-import { bubbleNumberAt } from "./bubbles.js";
+import { bubbleNumberAt, bubbleConnectorEnd } from "./bubbles.js";
 import { isEditableTarget } from "../editable-target.js";
 import { mosaicCrop } from "./mosaic.js";
 
@@ -57,6 +57,7 @@ export function createEditor(o = {}) {
       start = clampToStage(point);
       selectionDraft = normalizedRect({ x: start.x, y: start.y, width: 0, height: 0 });
       drawVeil(selectionDraft, true);
+      o.onSelectMove?.({ point: { ...start }, rect: selectionDraft });
       return;
     }
 
@@ -90,18 +91,22 @@ export function createEditor(o = {}) {
   });
 
   stage.on("pointermove", () => {
-    if (!start) return;
     const rawPoint = stage.getPointerPosition();
     if (!rawPoint) return;
 
-    if (!selection && selectionDraft) {
-      const point = clampToStage(rawPoint);
-      selectionDraft = normalizedRect({ x: start.x, y: start.y, width: point.x - start.x, height: point.y - start.y });
-      drawVeil(selectionDraft, true);
+    // Phase de pré-sélection : la loupe suit le curseur (survol) et la sélection
+    // se dessine pendant le glisser. onSelectMove pilote le HUD (loupe + x,y + taille).
+    if (!selection) {
+      if (start && selectionDraft) {
+        const point = clampToStage(rawPoint);
+        selectionDraft = normalizedRect({ x: start.x, y: start.y, width: point.x - start.x, height: point.y - start.y });
+        drawVeil(selectionDraft, true);
+      }
+      o.onSelectMove?.({ point: clampToStage(rawPoint), rect: selectionDraft });
       return;
     }
 
-    if (selection && annotationDraft) {
+    if (start && annotationDraft) {
       const point = clampToSelection(rawPoint);
       if (annotationDraft.descriptor.type === "free") {
         annotationDraft.descriptor.points.push(point.x, point.y);
@@ -353,7 +358,7 @@ export function createEditor(o = {}) {
 
     if (descriptor.label && descriptor.label.trim()) {
       const off = descriptor.labelOffset || LABEL_OFFSET;
-      const connector = new Konva.Line({ points: [off.dx, off.dy, 0, 0], stroke: descriptor.color, strokeWidth: 2 });
+      const connector = new Konva.Line({ points: [off.dx, off.dy, ...bubbleConnectorEnd(off.dx, off.dy, BUBBLE_RADIUS)], stroke: descriptor.color, strokeWidth: 2 });
       group.add(connector);
       const labelGroup = new Konva.Group({ x: off.dx, y: off.dy, draggable: tool === "select", name: "label" });
       const labelText = new Konva.Text({ text: descriptor.label, fontSize: 14, fill: "#e6edf3", fontFamily: FONT_FAMILY });
@@ -364,7 +369,7 @@ export function createEditor(o = {}) {
       labelText.position({ x: -tw / 2, y: -th / 2 });
       labelGroup.add(labelText);
       group.add(labelGroup);
-      labelGroup.on("dragmove", () => connector.points([labelGroup.x(), labelGroup.y(), 0, 0]));
+      labelGroup.on("dragmove", () => connector.points([labelGroup.x(), labelGroup.y(), ...bubbleConnectorEnd(labelGroup.x(), labelGroup.y(), BUBBLE_RADIUS)]));
       labelGroup.on("dragend", (event) => {
         if (event.target !== labelGroup) return;
         descriptor.labelOffset = { dx: labelGroup.x(), dy: labelGroup.y() };
