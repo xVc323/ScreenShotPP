@@ -6,6 +6,8 @@ pub struct Settings {
     pub default_save_folder: String,
     pub default_format: String, // "png" | "jpeg"
     pub ocr_language: String,    // "auto" | code langue
+    #[serde(default)]
+    pub launch_at_login: bool, // lancer l'app à l'ouverture de session
 }
 
 impl Default for Settings {
@@ -15,6 +17,7 @@ impl Default for Settings {
             default_save_folder: String::new(), // résolu au runtime (Bureau)
             default_format: "png".to_string(),
             ocr_language: "auto".to_string(),
+            launch_at_login: false,
         }
     }
 }

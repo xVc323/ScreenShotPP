@@ -7,6 +7,7 @@ const shortcutBtn = document.getElementById("shortcut");
 const folderEl = document.getElementById("folder");
 const formatSel = document.getElementById("format");
 const langSel = document.getElementById("ocr-language");
+const launchAtLogin = document.getElementById("launch-at-login");
 
 let settings = await invoke("get_settings");
 render();
@@ -17,6 +18,7 @@ function render() {
   folderEl.textContent = settings.default_save_folder || "Desktop";
   formatSel.value = settings.default_format;
   langSel.value = settings.ocr_language;
+  launchAtLogin.checked = !!settings.launch_at_login;
 }
 
 async function persist() {
@@ -65,5 +67,10 @@ formatSel.addEventListener("change", async () => {
 
 langSel.addEventListener("change", async () => {
   settings = { ...settings, ocr_language: langSel.value };
+  await persist();
+});
+
+launchAtLogin.addEventListener("change", async () => {
+  settings = { ...settings, launch_at_login: launchAtLogin.checked };
   await persist();
 });

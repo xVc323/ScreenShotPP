@@ -16,6 +16,10 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .register_uri_scheme_protocol("capture", |ctx, _request| {
             let app = ctx.app_handle();
             let state = app.state::<CaptureState>();
@@ -58,6 +62,15 @@ pub fn run() {
 
             let settings = settings::load(app.handle());
             hotkey::register_capture_shortcut(app.handle(), &settings.capture_shortcut)?;
+            {
+                use tauri_plugin_autostart::ManagerExt;
+                let autolaunch = app.autolaunch();
+                let _ = if settings.launch_at_login {
+                    autolaunch.enable()
+                } else {
+                    autolaunch.disable()
+                };
+            }
             app.manage(settings::SettingsState(std::sync::Mutex::new(settings)));
 
             if let Some(main) = app.get_webview_window("main") {

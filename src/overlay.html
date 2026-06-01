@@ -9,6 +9,13 @@
   </head>
   <body class="overlay-body">
     <div id="stage"></div>
+    <div id="loupe" class="loupe" hidden>
+      <canvas id="loupe-canvas" width="140" height="140"></canvas>
+      <div class="loupe-info">
+        <span id="loupe-pos">0, 0</span>
+        <span id="loupe-size"></span>
+      </div>
+    </div>
     <div id="toolbar" class="toolbar hidden">
       <span class="drag-handle" id="drag-handle" title="Move toolbar">⠿</span>
       <button class="tool" data-tool="select" title="Select/Move">▱</button>

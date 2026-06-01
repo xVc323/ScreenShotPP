@@ -21,6 +21,11 @@ const ocrText = document.getElementById("ocr-text");
 const ocrCopy = document.getElementById("ocr-copy");
 const copyButton = document.getElementById("copy-btn");
 const saveButton = document.getElementById("save-btn");
+const loupe = document.getElementById("loupe");
+const loupeCanvas = document.getElementById("loupe-canvas");
+const loupeCtx = loupeCanvas.getContext("2d");
+const loupePos = document.getElementById("loupe-pos");
+const loupeSize = document.getElementById("loupe-size");
 let editor = null;
 let busy = false;
 
@@ -32,6 +37,43 @@ redoButton.disabled = true;
     const base = navigator.userAgent.includes("Windows") ? "http://capture.localhost" : "capture://localhost";
     const image = await loadImage(base + "/current?t=" + Date.now());
     const scale = image.naturalWidth / window.innerWidth;
+
+    // Loupe de pixels (Lot A) : suit le curseur pendant la phase de sélection.
+    const LOUPE_SIZE = 140;
+    const LOUPE_ZOOM = 8;
+    const hideLoupe = () => { loupe.hidden = true; };
+    const updateLoupe = (point, rect) => {
+      const cx = point.x * scale;
+      const cy = point.y * scale;
+      const src = LOUPE_SIZE / LOUPE_ZOOM;
+      loupeCtx.imageSmoothingEnabled = false;
+      loupeCtx.fillStyle = "#0d1117";
+      loupeCtx.fillRect(0, 0, LOUPE_SIZE, LOUPE_SIZE);
+      loupeCtx.drawImage(image, cx - src / 2, cy - src / 2, src, src, 0, 0, LOUPE_SIZE, LOUPE_SIZE);
+      loupeCtx.strokeStyle = "rgba(77, 163, 255, 0.9)";
+      loupeCtx.lineWidth = 1;
+      loupeCtx.beginPath();
+      loupeCtx.moveTo(LOUPE_SIZE / 2 + 0.5, 0);
+      loupeCtx.lineTo(LOUPE_SIZE / 2 + 0.5, LOUPE_SIZE);
+      loupeCtx.moveTo(0, LOUPE_SIZE / 2 + 0.5);
+      loupeCtx.lineTo(LOUPE_SIZE, LOUPE_SIZE / 2 + 0.5);
+      loupeCtx.stroke();
+      loupePos.textContent = `${Math.round(cx)}, ${Math.round(cy)}`;
+      loupeSize.textContent = rect && (rect.width >= 1 || rect.height >= 1)
+        ? `${Math.round(rect.width * scale)} × ${Math.round(rect.height * scale)}`
+        : "";
+      const off = 24;
+      const w = LOUPE_SIZE + 2;
+      const h = LOUPE_SIZE + 24;
+      let left = point.x + off;
+      let top = point.y + off;
+      if (left + w + 8 > window.innerWidth) left = point.x - w - off;
+      if (top + h + 8 > window.innerHeight) top = point.y - h - off;
+      loupe.style.left = `${Math.max(8, left)}px`;
+      loupe.style.top = `${Math.max(8, top)}px`;
+      loupe.hidden = false;
+    };
+
     editor = createEditor({
       container: "stage",
       image,
@@ -39,7 +81,8 @@ redoButton.disabled = true;
       color: document.querySelector(".swatch.active").dataset.color,
       strokeWidth: parseInt(thickness.value, 10),
       fontSize: parseInt(fontsize.value, 10),
-      onSelectionDone: (selection) => positionAndShowToolbar(selection),
+      onSelectMove: ({ point, rect }) => updateLoupe(point, rect),
+      onSelectionDone: (selection) => { hideLoupe(); positionAndShowToolbar(selection); },
       onHistoryChange: ({ canUndo, canRedo }) => {
         undoButton.disabled = !canUndo;
         redoButton.disabled = !canRedo;
