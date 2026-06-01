@@ -28,6 +28,7 @@ xcap = "0.9"
 tauri-plugin-clipboard-manager = "2.3.2"
 tauri-plugin-global-shortcut = "2.3.2"
 tauri-plugin-dialog = "2.7.1"
+tauri-plugin-autostart = "2"
 base64 = "0.22.1"
 swift-rs = "1.0.7"
 

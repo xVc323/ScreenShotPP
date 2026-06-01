@@ -175,6 +175,16 @@ pub fn update_settings(
     new_settings: crate::settings::Settings,
 ) -> Result<(), String> {
     crate::hotkey::reregister(&app, &new_settings.capture_shortcut)?;
+    {
+        use tauri_plugin_autostart::ManagerExt;
+        let autolaunch = app.autolaunch();
+        let result = if new_settings.launch_at_login {
+            autolaunch.enable()
+        } else {
+            autolaunch.disable()
+        };
+        result.map_err(|e| e.to_string())?;
+    }
     crate::settings::save(&app, &new_settings)?;
     *app.state::<crate::settings::SettingsState>()
         .0
