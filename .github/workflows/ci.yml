@@ -18,7 +18,7 @@ jobs:
           workspaces: src-tauri
       - name: Cargo tests (logique pure)
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - name: Tests frontend (logique pure)
