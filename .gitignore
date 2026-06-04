@@ -36,3 +36,6 @@ lerna-debug.log*
 *.pem
 AuthKey_*.p8
 Certificates.p12
+
+# Internal planning artifacts
+/docs/superpowers/
