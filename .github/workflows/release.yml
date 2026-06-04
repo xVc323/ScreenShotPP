@@ -77,7 +77,7 @@ jobs:
           xcrun stapler staple "$dmg"
       - name: Validate stapled DMG
         run: xcrun stapler validate src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-macos
           path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
@@ -98,7 +98,7 @@ jobs:
       - run: npm ci
       - name: Build Windows NSIS preview installer
         run: npm run tauri build -- --bundles nsis
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-windows
           path: src-tauri/target/release/bundle/nsis/*-setup.exe
