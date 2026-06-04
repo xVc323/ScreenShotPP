@@ -59,19 +59,19 @@ mod windows_impl {
         let stream = InMemoryRandomAccessStream::new().map_err(err)?;
         let writer = DataWriter::CreateDataWriter(&stream).map_err(err)?;
         writer.WriteBytes(png).map_err(err)?;
-        writer.StoreAsync().map_err(err)?.get().map_err(err)?;
-        writer.FlushAsync().map_err(err)?.get().map_err(err)?;
+        writer.StoreAsync().map_err(err)?.join().map_err(err)?;
+        writer.FlushAsync().map_err(err)?.join().map_err(err)?;
         writer.DetachStream().ok();
         stream.Seek(0).map_err(err)?;
 
         let decoder = BitmapDecoder::CreateAsync(&stream)
             .map_err(err)?
-            .get()
+            .join()
             .map_err(err)?;
         let decoded = decoder
             .GetSoftwareBitmapAsync()
             .map_err(err)?
-            .get()
+            .join()
             .map_err(err)?;
         let bitmap = SoftwareBitmap::ConvertWithAlpha(
             &decoded,
@@ -84,7 +84,7 @@ mod windows_impl {
         let result = engine
             .RecognizeAsync(&bitmap)
             .map_err(err)?
-            .get()
+            .join()
             .map_err(err)?;
         Ok(result.Text().map_err(err)?.to_string())
     }
