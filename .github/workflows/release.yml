@@ -128,12 +128,22 @@ jobs:
           pattern: release-*
           path: release-assets
           merge-multiple: true
+      - name: Flatten downloaded assets
+        shell: bash
+        run: |
+          # upload-artifact preserves the macOS bundle/{dmg,macos} subdirs;
+          # flatten so the globs below and gh release create see plain files.
+          find release-assets -mindepth 2 -type f -exec mv -t release-assets/ {} +
+          find release-assets -mindepth 1 -type d -empty -delete
+          ls -la release-assets
       - name: Generate updater manifest (latest.json)
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
           mac_archive=$(basename "$(ls release-assets/*.app.tar.gz)")
           win_setup=$(basename "$(ls release-assets/*-setup.exe)")
+          test -s "release-assets/${mac_archive}.sig"
+          test -s "release-assets/${win_setup}.sig"
           base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
           jq -n \
             --arg version "$version" \
