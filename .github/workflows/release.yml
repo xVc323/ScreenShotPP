@@ -62,8 +62,11 @@ jobs:
           echo "APPLE_API_ISSUER=$APPLE_API_ISSUER" >> "$GITHUB_ENV"
           echo "APPLE_API_KEY=$APPLE_API_KEY" >> "$GITHUB_ENV"
           echo "APPLE_API_KEY_PATH=$APPLE_API_KEY_PATH" >> "$GITHUB_ENV"
-      - name: Build signed and notarized DMG
-        run: npm run tauri build -- --bundles dmg --target aarch64-apple-darwin
+      - name: Build signed and notarized app + DMG
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri build -- --bundles app,dmg --target aarch64-apple-darwin
       - name: Notarize and staple the DMG
         run: |
           dmg=$(ls src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg)
@@ -80,7 +83,10 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: release-macos
-          path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          path: |
+            src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
           if-no-files-found: error
 
   build-windows:
@@ -97,11 +103,16 @@ jobs:
           workspaces: src-tauri
       - run: npm ci
       - name: Build Windows NSIS preview installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run tauri build -- --bundles nsis
       - uses: actions/upload-artifact@v7
         with:
           name: release-windows
-          path: src-tauri/target/release/bundle/nsis/*-setup.exe
+          path: |
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            src-tauri/target/release/bundle/nsis/*-setup.exe.sig
           if-no-files-found: error
 
   publish-release:
@@ -117,6 +128,28 @@ jobs:
           pattern: release-*
           path: release-assets
           merge-multiple: true
+      - name: Generate updater manifest (latest.json)
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mac_archive=$(basename "$(ls release-assets/*.app.tar.gz)")
+          win_setup=$(basename "$(ls release-assets/*-setup.exe)")
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          jq -n \
+            --arg version "$version" \
+            --arg notes "$(cat ".github/release-notes/${GITHUB_REF_NAME}.md")" \
+            --arg macsig "$(cat "release-assets/${mac_archive}.sig")" \
+            --arg macurl "${base}/${mac_archive}" \
+            --arg winsig "$(cat "release-assets/${win_setup}.sig")" \
+            --arg winurl "${base}/${win_setup}" \
+            '{
+              version: $version,
+              notes: $notes,
+              platforms: {
+                "darwin-aarch64": { signature: $macsig, url: $macurl },
+                "windows-x86_64": { signature: $winsig, url: $winurl }
+              }
+            }' > release-assets/latest.json
       - name: Publish complete GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
