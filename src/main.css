@@ -29,3 +29,4 @@ h1 { font-size: 20px; font-weight: 600; }
 .recorder:hover, .settings button:hover { background: #30363d; }
 .settings select { padding: 0 8px; }
 .version { color: #8b949e; font-size: 12px; margin-top: 8px; }
+.update-status { color: #8b949e; font-size: 12px; }

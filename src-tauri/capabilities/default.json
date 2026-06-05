@@ -8,6 +8,9 @@
     "clipboard-manager:allow-write-image",
     "clipboard-manager:allow-write-text",
     "dialog:allow-save",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "dialog:allow-ask",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

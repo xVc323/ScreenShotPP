@@ -1,6 +1,6 @@
 [package]
 name = "screenshotpp"
-version = "0.1.1"
+version = "0.1.2"
 description = "ScreenShotPP – background screenshot utility"
 authors = ["you"]
 edition = "2021"
@@ -29,6 +29,8 @@ tauri-plugin-clipboard-manager = "2.3.2"
 tauri-plugin-global-shortcut = "2.3.2"
 tauri-plugin-dialog = "2.7.1"
 tauri-plugin-autostart = "2"
+tauri-plugin-process = "2"
+tauri-plugin-updater = "2"
 base64 = "0.22.1"
 swift-rs = "1.0.7"
 
