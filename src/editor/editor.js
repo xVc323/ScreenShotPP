@@ -37,6 +37,7 @@ export function createEditor(o = {}) {
   let activeText = null;
   let start = null;
   let nextId = 1;
+  let hoverAutoSelection = null;
 
   stage.add(backgroundLayer);
   stage.add(annotationLayer);
@@ -46,6 +47,9 @@ export function createEditor(o = {}) {
 
   if (o.image) backgroundLayer.add(new Konva.Image({ image: o.image, x: 0, y: 0, width, height }));
   backgroundLayer.draw();
+  if (o.initialSelection) {
+    lockSelection(o.initialSelection);
+  }
   notifyHistory();
 
   stage.on("pointerdown", (event) => {
@@ -54,6 +58,11 @@ export function createEditor(o = {}) {
     if (!point) return;
 
     if (!selection) {
+      const autoSelection = autoSelectionAt(point);
+      if (autoSelection) {
+        lockSelection(autoSelection.selection);
+        return;
+      }
       start = clampToStage(point);
       selectionDraft = normalizedRect({ x: start.x, y: start.y, width: 0, height: 0 });
       drawVeil(selectionDraft, true);
@@ -101,8 +110,19 @@ export function createEditor(o = {}) {
         const point = clampToStage(rawPoint);
         selectionDraft = normalizedRect({ x: start.x, y: start.y, width: point.x - start.x, height: point.y - start.y });
         drawVeil(selectionDraft, true);
+        hoverAutoSelection = null;
+      } else {
+        hoverAutoSelection = autoSelectionAt(rawPoint);
+        if (hoverAutoSelection) drawVeil(hoverAutoSelection.selection, true);
+        else {
+          veilLayer.destroyChildren();
+          veilLayer.draw();
+        }
       }
-      o.onSelectMove?.({ point: clampToStage(rawPoint), rect: selectionDraft });
+      o.onSelectMove?.({
+        point: clampToStage(rawPoint),
+        rect: selectionDraft || hoverAutoSelection?.selection || null,
+      });
       return;
     }
 
@@ -442,6 +462,37 @@ export function createEditor(o = {}) {
     o.onHistoryChange?.({ canUndo: history.canUndo(), canRedo: history.canRedo() });
   }
 
+  function lockSelection(rect) {
+    selection = clampRectToStage(rect);
+    if (selection.width < MIN_SIZE || selection.height < MIN_SIZE) {
+      selection = null;
+      return false;
+    }
+    hoverAutoSelection = null;
+    shapeGroup.clip(selection);
+    drawVeil();
+    o.onSelectionDone?.({ ...selection });
+    return true;
+  }
+
+  function autoSelectionAt(point) {
+    if (start || selectionDraft) return null;
+    const p = clampToStage(point);
+    const candidates = Array.isArray(o.autoSelections) ? o.autoSelections : [];
+    for (const candidate of candidates) {
+      const activation = candidate?.activation;
+      const selectionRect = candidate?.selection;
+      if (!activation || !selectionRect) continue;
+      if (pointInRect(p, activation)) {
+        const normalized = clampRectToStage(selectionRect);
+        if (normalized.width >= MIN_SIZE && normalized.height >= MIN_SIZE) {
+          return { selection: normalized };
+        }
+      }
+    }
+    return null;
+  }
+
   function drawVeil(rect = selection, isDraft = false) {
     veilLayer.destroyChildren();
     const shade = { fill: o.veilColor || "rgba(0, 0, 0, 0.45)", listening: false };
@@ -466,6 +517,18 @@ export function createEditor(o = {}) {
 
   function insideSelection(point) {
     return point.x >= selection.x && point.x <= selection.x + selection.width && point.y >= selection.y && point.y <= selection.y + selection.height;
+  }
+
+  function clampRectToStage(rect) {
+    const initial = normalizedRect(rect);
+    const x = clamp(initial.x, 0, width);
+    const y = clamp(initial.y, 0, height);
+    return {
+      x,
+      y,
+      width: clamp(initial.width, 0, width - x),
+      height: clamp(initial.height, 0, height - y),
+    };
   }
 
   // Ouvre un <textarea> HTML temporaire au point cliqué pour la saisie sur place.
@@ -604,4 +667,11 @@ function positiveNumber(value, fallback) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function pointInRect(point, rect) {
+  return point.x >= rect.x
+    && point.x < rect.x + rect.width
+    && point.y >= rect.y
+    && point.y < rect.y + rect.height;
 }

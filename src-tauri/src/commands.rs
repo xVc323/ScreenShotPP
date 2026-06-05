@@ -1,4 +1,5 @@
 use crate::capture;
+use crate::window_pick;
 use crate::{clipboard, storage};
 use base64::Engine;
 use image::RgbaImage;
@@ -7,36 +8,68 @@ use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 /// Capture courante gelée, partagée entre commands.
 #[derive(Default)]
-pub struct CaptureState(pub Mutex<Option<RgbaImage>>);
+pub struct CaptureState(pub Mutex<Option<CaptureSession>>);
+
+pub struct CaptureSession {
+    pub image: RgbaImage,
+    pub window_selections: Vec<WindowSelection>,
+}
+
+#[derive(serde::Serialize)]
+pub struct CaptureMetadata {
+    pub image_width: u32,
+    pub image_height: u32,
+    pub window_selections: Vec<WindowSelection>,
+}
+
+#[derive(Clone, serde::Serialize)]
+pub struct WindowSelection {
+    pub selection: capture::Rect,
+    pub activation: capture::Rect,
+}
 
 /// Déclenché par le raccourci : capture l'écran, stocke l'image, ouvre l'overlay.
 /// La création de la fenêtre est faite sur le thread principal (exigence macOS).
 pub fn start_capture(app: AppHandle) -> Result<(), String> {
     let cursor = app.cursor_position().map_err(|e| e.to_string())?;
     let (cx, cy) = (cursor.x as i32, cursor.y as i32);
+    let monitor_rect = capture::monitor_rect_at(cx, cy)?;
+    let monitor_global_rect = window_pick::GlobalRect {
+        x: monitor_rect.x,
+        y: monitor_rect.y,
+        width: monitor_rect.width,
+        height: monitor_rect.height,
+    };
+    let window_selections = window_pick::foreground_window_selection(monitor_global_rect)
+        .into_iter()
+        .map(|candidate| WindowSelection {
+            selection: rect_from_global(candidate.monitor_relative_rect),
+            activation: rect_from_global(candidate.monitor_relative_activation_rect),
+        })
+        .collect();
     let img = capture::capture_at(cx, cy)?;
     {
         let state = app.state::<CaptureState>();
-        *state.0.lock().unwrap_or_else(|e| e.into_inner()) = Some(img);
+        *state.0.lock().unwrap_or_else(|e| e.into_inner()) = Some(CaptureSession {
+            image: img,
+            window_selections,
+        });
     }
     let app2 = app.clone();
     app.run_on_main_thread(move || {
         if let Some(w) = app2.get_webview_window("overlay") {
             let _ = w.close();
         }
-        let mut builder = WebviewWindowBuilder::new(
-            &app2,
-            "overlay",
-            WebviewUrl::App("overlay.html".into()),
-        )
-        .title("ScreenShotPP Overlay")
-        .always_on_top(true)
-        .decorations(false)
-        .skip_taskbar(true)
-        .focused(true)
-        .resizable(false)
-        .visible(false)
-        .transparent(true);
+        let mut builder =
+            WebviewWindowBuilder::new(&app2, "overlay", WebviewUrl::App("overlay.html".into()))
+                .title("ScreenShotPP Overlay")
+                .always_on_top(true)
+                .decorations(false)
+                .skip_taskbar(true)
+                .focused(true)
+                .resizable(false)
+                .visible(false)
+                .transparent(true);
 
         // Épingle l'overlay au moniteur Tauri sous le curseur (même écran que la capture),
         // pour que l'image affichée et la sélection partagent le même espace de coordonnées.
@@ -46,11 +79,19 @@ pub fn start_capture(app: AppHandle) -> Result<(), String> {
             .map(|m| {
                 let p = m.position();
                 let s = m.size();
-                capture::MonitorRect { x: p.x, y: p.y, width: s.width, height: s.height }
+                capture::MonitorRect {
+                    x: p.x,
+                    y: p.y,
+                    width: s.width,
+                    height: s.height,
+                }
             })
             .collect();
-        let target_index =
-            capture::monitor_at(&rects, cx, cy).or(if monitors.is_empty() { None } else { Some(0) });
+        let target_index = capture::monitor_at(&rects, cx, cy).or(if monitors.is_empty() {
+            None
+        } else {
+            Some(0)
+        });
         match target_index.and_then(|i| monitors.get(i)) {
             Some(monitor) => {
                 let pos = monitor.position();
@@ -77,10 +118,31 @@ pub fn start_capture(app: AppHandle) -> Result<(), String> {
 pub fn get_capture_data_url(app: AppHandle) -> Result<String, String> {
     let state = app.state::<CaptureState>();
     let guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
-    let img = guard.as_ref().ok_or("Aucune capture en cours")?;
-    let png = storage::encode_image(img, storage::SaveFormat::Png)?;
+    let session = guard.as_ref().ok_or("Aucune capture en cours")?;
+    let png = storage::encode_image(&session.image, storage::SaveFormat::Png)?;
     let b64 = base64::engine::general_purpose::STANDARD.encode(png);
     Ok(format!("data:image/png;base64,{b64}"))
+}
+
+#[tauri::command]
+pub fn get_capture_metadata(app: AppHandle) -> Result<CaptureMetadata, String> {
+    let state = app.state::<CaptureState>();
+    let guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
+    let session = guard.as_ref().ok_or("Aucune capture en cours")?;
+    Ok(CaptureMetadata {
+        image_width: session.image.width(),
+        image_height: session.image.height(),
+        window_selections: session.window_selections.clone(),
+    })
+}
+
+fn rect_from_global(rect: window_pick::GlobalRect) -> capture::Rect {
+    capture::Rect {
+        x: rect.x.max(0) as u32,
+        y: rect.y.max(0) as u32,
+        width: rect.width,
+        height: rect.height,
+    }
 }
 
 /// Copie une image déjà composée (PNG base64) dans le presse-papier.
@@ -145,8 +207,8 @@ pub async fn ocr_region(app: AppHandle, rect: capture::Rect) -> Result<String, S
         let state = app.state::<CaptureState>();
         let cropped = {
             let guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
-            let img = guard.as_ref().ok_or("Aucune capture en cours")?;
-            capture::crop_region(img, rect)
+            let session = guard.as_ref().ok_or("Aucune capture en cours")?;
+            capture::crop_region(&session.image, rect)
         };
         crate::ocr::recognize(&cropped, &lang)
     })

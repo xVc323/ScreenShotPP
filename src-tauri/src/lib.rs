@@ -1,11 +1,12 @@
-mod tray;
-mod settings;
-mod storage;
 mod capture;
 mod clipboard;
-mod hotkey;
 mod commands;
+mod hotkey;
 mod ocr;
+mod settings;
+mod storage;
+mod tray;
+mod window_pick;
 
 use commands::CaptureState;
 use tauri::Manager;
@@ -25,21 +26,28 @@ pub fn run() {
             let state = app.state::<CaptureState>();
             let guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
             match guard.as_ref() {
-                Some(img) => match storage::encode_png_fast(img) {
+                Some(session) => match storage::encode_png_fast(&session.image) {
                     Ok(png) => tauri::http::Response::builder()
                         .header("Content-Type", "image/png")
                         .header("Access-Control-Allow-Origin", "*")
                         .header("Cache-Control", "no-store")
                         .body(png)
                         .unwrap(),
-                    Err(_) => tauri::http::Response::builder().status(500).body(Vec::new()).unwrap(),
+                    Err(_) => tauri::http::Response::builder()
+                        .status(500)
+                        .body(Vec::new())
+                        .unwrap(),
                 },
-                None => tauri::http::Response::builder().status(404).body(Vec::new()).unwrap(),
+                None => tauri::http::Response::builder()
+                    .status(404)
+                    .body(Vec::new())
+                    .unwrap(),
             }
         })
         .manage(CaptureState::default())
         .invoke_handler(tauri::generate_handler![
             commands::get_capture_data_url,
+            commands::get_capture_metadata,
             commands::copy_composited,
             commands::save_composited,
             commands::default_save_name,

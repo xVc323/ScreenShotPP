@@ -35,8 +35,17 @@ redoButton.disabled = true;
 (async function init() {
   try {
     const base = navigator.userAgent.includes("Windows") ? "http://capture.localhost" : "capture://localhost";
-    const image = await loadImage(base + "/current?t=" + Date.now());
+    const [image, metadata] = await Promise.all([
+      loadImage(base + "/current?t=" + Date.now()),
+      invoke("get_capture_metadata"),
+    ]);
     const scale = image.naturalWidth / window.innerWidth;
+    const autoSelections = Array.isArray(metadata.window_selections)
+      ? metadata.window_selections.map(({ selection, activation }) => ({
+          selection: rectToCss(selection, scale),
+          activation: rectToCss(activation, scale),
+        }))
+      : [];
 
     // Loupe de pixels (Lot A) : suit le curseur pendant la phase de sélection.
     const LOUPE_SIZE = 140;
@@ -81,6 +90,7 @@ redoButton.disabled = true;
       color: document.querySelector(".swatch.active").dataset.color,
       strokeWidth: parseInt(thickness.value, 10),
       fontSize: parseInt(fontsize.value, 10),
+      autoSelections,
       onSelectMove: ({ point, rect }) => updateLoupe(point, rect),
       onSelectionDone: (selection) => { hideLoupe(); positionAndShowToolbar(selection); },
       onHistoryChange: ({ canUndo, canRedo }) => {
@@ -112,6 +122,15 @@ function loadImage(src) {
     image.onerror = () => reject(new Error("Capture image failed to load"));
     image.src = src;
   });
+}
+
+function rectToCss(rect, scale) {
+  return {
+    x: rect.x / scale,
+    y: rect.y / scale,
+    width: rect.width / scale,
+    height: rect.height / scale,
+  };
 }
 
 function setBusy(value) {
