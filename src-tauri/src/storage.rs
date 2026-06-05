@@ -25,12 +25,12 @@ impl SaveFormat {
     }
 }
 
-/// Nom de fichier par défaut : "Capture 2026-05-30 a 14.32.png".
+/// Nom de fichier par défaut : "Screenshot_2026-05-30_143205.png".
 pub fn default_filename(now: NaiveDateTime, format: SaveFormat) -> String {
     format!(
-        "Capture {} a {}.{}",
+        "Screenshot_{}_{}.{}",
         now.format("%Y-%m-%d"),
-        now.format("%H.%M"),
+        now.format("%H%M%S"),
         format.extension()
     )
 }
@@ -159,15 +159,15 @@ mod tests {
     fn filename_is_formatted_with_date_and_extension() {
         let dt = NaiveDate::from_ymd_opt(2026, 5, 30)
             .unwrap()
-            .and_hms_opt(14, 32, 0)
+            .and_hms_opt(14, 32, 5)
             .unwrap();
         assert_eq!(
             default_filename(dt, SaveFormat::Png),
-            "Capture 2026-05-30 a 14.32.png"
+            "Screenshot_2026-05-30_143205.png"
         );
         assert_eq!(
             default_filename(dt, SaveFormat::Jpeg),
-            "Capture 2026-05-30 a 14.32.jpg"
+            "Screenshot_2026-05-30_143205.jpg"
         );
     }
 
