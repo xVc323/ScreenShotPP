@@ -147,7 +147,7 @@ jobs:
           base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
           jq -n \
             --arg version "$version" \
-            --arg notes "$(cat ".github/release-notes/${GITHUB_REF_NAME}.md")" \
+            --arg notes "$(node scripts/updater-notes.mjs ".github/release-notes/${GITHUB_REF_NAME}.md")" \
             --arg macsig "$(cat "release-assets/${mac_archive}.sig")" \
             --arg macurl "${base}/${mac_archive}" \
             --arg winsig "$(cat "release-assets/${win_setup}.sig")" \
