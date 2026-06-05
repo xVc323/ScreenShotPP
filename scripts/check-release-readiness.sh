@@ -28,7 +28,7 @@ grep -q "A fast, native screenshot tool" README.md || fail "README tagline missi
 grep -q "docs/assets/screenshotpp-demo.gif" README.md || fail "README GIF missing"
 grep -q "Windows preview" README.md || fail "README Windows preview warning missing"
 grep -q 'tags:' .github/workflows/release.yml || fail "release tag trigger missing"
-grep -q 'npm run tauri build -- --bundles dmg' .github/workflows/release.yml || fail "macOS DMG build missing"
+grep -q 'npm run tauri build -- --bundles app,dmg' .github/workflows/release.yml || fail "macOS DMG build missing"
 grep -q 'npm run tauri build -- --bundles nsis' .github/workflows/release.yml || fail "Windows NSIS build missing"
 grep -q 'APPLE_SIGNING_IDENTITY' .github/workflows/release.yml || fail "release signing identity missing"
 grep -q 'APPLE_API_KEY_PATH' .github/workflows/release.yml || fail "notarization API key path missing"
