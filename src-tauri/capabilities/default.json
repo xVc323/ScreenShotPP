@@ -5,12 +5,15 @@
   "windows": ["main", "overlay"],
   "permissions": [
     "core:default",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
     "clipboard-manager:allow-write-image",
     "clipboard-manager:allow-write-text",
     "dialog:allow-save",
     "dialog:allow-open",
     "dialog:allow-ask",
     "updater:default",
-    "process:allow-restart"
+    "process:allow-restart",
+    "opener:allow-open-url"
   ]
 }

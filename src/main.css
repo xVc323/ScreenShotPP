@@ -30,3 +30,18 @@ h1 { font-size: 20px; font-weight: 600; }
 .settings select { padding: 0 8px; }
 .version { color: #8b949e; font-size: 12px; margin-top: 8px; }
 .update-status { color: #8b949e; font-size: 12px; }
+.update-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+  border: 1px solid #1f6feb;
+  border-radius: 8px;
+  background: #0d1f3c;
+}
+.update-banner-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.update-banner-title { color: #e6edf3; font-size: 14px; font-weight: 600; }
+.update-changelog { color: #58a6ff; font-size: 12px; text-decoration: none; cursor: pointer; }
+.update-changelog:hover { text-decoration: underline; }
+.update-banner-actions { display: flex; gap: 8px; }

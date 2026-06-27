@@ -1,9 +1,15 @@
 import { keyEventToAccelerator } from "./accelerator.js";
+import { shouldNotify } from "./update.js";
 
 const { invoke } = window.__TAURI__.core;
 const dialog = window.__TAURI__.dialog;
 const { check } = window.__TAURI__.updater;
 const { relaunch } = window.__TAURI__.process;
+const { openUrl } = window.__TAURI__.opener;
+const { getCurrentWindow } = window.__TAURI__.window;
+
+const RELEASES_URL = "https://github.com/xVc323/ScreenShotPP/releases";
+const SKIPPED_KEY = "skippedUpdateVersion";
 
 const shortcutBtn = document.getElementById("shortcut");
 const folderEl = document.getElementById("folder");
@@ -80,62 +86,107 @@ launchAtLogin.addEventListener("change", async () => {
 // Mises à jour de l'application via le plugin updater Tauri.
 const updateBtn = document.getElementById("check-updates");
 const updateStatus = document.getElementById("update-status");
-let updateBusy = false;
+const banner = document.getElementById("update-banner");
+const bannerTitle = document.getElementById("update-banner-title");
+const bannerStatus = document.getElementById("update-banner-status");
+const changelogLink = document.getElementById("update-changelog");
+const installBtn = document.getElementById("update-install");
+const laterBtn = document.getElementById("update-later");
+const skipBtn = document.getElementById("update-skip");
+let currentUpdate = null;
 
 function setUpdateStatus(message) {
   updateStatus.textContent = message;
 }
 
-updateBtn.addEventListener("click", async () => {
-  if (updateBusy) return;
-  updateBusy = true;
-  updateBtn.disabled = true;
-  setUpdateStatus("Checking…");
+function hideBanner() {
+  banner.hidden = true;
+  currentUpdate = null;
+}
+
+async function presentBanner(update) {
+  currentUpdate = update;
+  bannerTitle.textContent = `Version ${update.version} is available`;
+  bannerStatus.textContent = "";
+  banner.hidden = false;
   try {
-    const update = await check();
-    if (!update) {
-      setUpdateStatus("You're up to date.");
-      return;
-    }
+    const win = getCurrentWindow();
+    await win.show();
+    await win.setFocus();
+  } catch (error) {
+    console.error("show window failed:", error);
+  }
+}
 
-    const ok = await dialog.ask(
-      `Version ${update.version} is available.\n\n${update.body || ""}`,
-      { title: "Update available", kind: "info", okLabel: "Install", cancelLabel: "Later" },
-    );
-    if (!ok) {
-      setUpdateStatus(`Version ${update.version} available.`);
-      return;
-    }
-
-    let downloaded = 0;
-    let total = 0;
+async function installUpdate(update) {
+  let downloaded = 0;
+  let total = 0;
+  installBtn.disabled = true;
+  laterBtn.disabled = true;
+  skipBtn.disabled = true;
+  try {
     await update.downloadAndInstall((event) => {
       switch (event.event) {
         case "Started":
           total = event.data.contentLength ?? 0;
-          setUpdateStatus("Downloading…");
+          bannerStatus.textContent = "Downloading…";
           break;
         case "Progress":
           downloaded += event.data.chunkLength ?? 0;
-          setUpdateStatus(
-            total
-              ? `Downloading… ${Math.round((downloaded / total) * 100)}%`
-              : "Downloading…",
-          );
+          bannerStatus.textContent = total
+            ? `Downloading… ${Math.round((downloaded / total) * 100)}%`
+            : "Downloading…";
           break;
         case "Finished":
-          setUpdateStatus("Installing…");
+          bannerStatus.textContent = "Installing…";
           break;
       }
     });
-
-    setUpdateStatus("Restarting…");
+    bannerStatus.textContent = "Restarting…";
     await relaunch();
   } catch (error) {
     console.error("update failed:", error);
-    setUpdateStatus("Update failed: " + error);
-  } finally {
-    updateBusy = false;
-    updateBtn.disabled = false;
+    bannerStatus.textContent = "Update failed: " + error;
+    installBtn.disabled = false;
+    laterBtn.disabled = false;
+    skipBtn.disabled = false;
   }
+}
+
+// auto : silencieux si rien/erreur/version ignorée. manuel : feedback + ignore le skip.
+async function runUpdateCheck({ auto }) {
+  if (!auto) {
+    updateBtn.disabled = true;
+    setUpdateStatus("Checking…");
+  }
+  try {
+    const update = await check();
+    const skipped = localStorage.getItem(SKIPPED_KEY);
+    if (shouldNotify(update?.version ?? null, skipped, { auto })) {
+      await presentBanner(update);
+      if (!auto) setUpdateStatus("");
+    } else if (!auto) {
+      setUpdateStatus(update ? `Version ${update.version} skipped.` : "You're up to date.");
+    }
+  } catch (error) {
+    console.error("update check failed:", error);
+    if (!auto) setUpdateStatus("Update failed: " + error);
+  } finally {
+    if (!auto) updateBtn.disabled = false;
+  }
+}
+
+updateBtn.addEventListener("click", () => runUpdateCheck({ auto: false }));
+installBtn.addEventListener("click", () => { if (currentUpdate) installUpdate(currentUpdate); });
+laterBtn.addEventListener("click", hideBanner);
+skipBtn.addEventListener("click", () => {
+  if (currentUpdate) localStorage.setItem(SKIPPED_KEY, currentUpdate.version);
+  hideBanner();
 });
+changelogLink.addEventListener("click", (event) => {
+  event.preventDefault();
+  openUrl(RELEASES_URL).catch((error) => console.error("open changelog failed:", error));
+});
+
+// Vérification automatique au démarrage (la fenêtre main se charge même cachée).
+runUpdateCheck({ auto: true });
