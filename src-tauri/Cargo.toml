@@ -53,3 +53,7 @@ windows = { version = "0.62", features = [
     "Win32_Graphics_Dwm",
     "Win32_UI_WindowsAndMessaging",
 ] }
+# Capture d'écran via Windows Graphics Capture (WGC). Remplace le chemin GDI
+# BitBlt de xcap, qui rend du noir pour le contenu composé GPU (partage Teams)
+# et est peu fiable sur écrans secondaires / DPI mixtes.
+windows-capture = "2"

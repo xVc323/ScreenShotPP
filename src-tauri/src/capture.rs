@@ -79,6 +79,15 @@ pub fn monitor_rect_at(x: i32, y: i32) -> Result<(MonitorRect, f32), String> {
 }
 
 /// Capture le moniteur contenant (x, y), ou le moniteur principal en repli.
+/// Sur Windows : via Windows Graphics Capture (WGC), fiable pour le contenu
+/// composé GPU (partage Teams) et les écrans secondaires / DPI mixtes.
+#[cfg(windows)]
+pub fn capture_at(x: i32, y: i32) -> Result<RgbaImage, String> {
+    crate::capture_win::capture_at_point(x, y)
+}
+
+/// Capture le moniteur contenant (x, y), ou le moniteur principal en repli.
+#[cfg(not(windows))]
 pub fn capture_at(x: i32, y: i32) -> Result<RgbaImage, String> {
     let monitors = xcap::Monitor::all().map_err(|e| e.to_string())?;
     let rects: Vec<MonitorRect> = monitors

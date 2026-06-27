@@ -1,4 +1,6 @@
 mod capture;
+#[cfg(windows)]
+mod capture_win;
 mod clipboard;
 mod commands;
 mod hotkey;
