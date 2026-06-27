@@ -106,7 +106,7 @@ function hideBanner() {
 
 async function presentBanner(update) {
   currentUpdate = update;
-  bannerTitle.textContent = `Version ${update.version} is available`;
+  bannerTitle.textContent = `Version ${update.version}`;
   bannerStatus.textContent = "";
   banner.hidden = false;
   try {

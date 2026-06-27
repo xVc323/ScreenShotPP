@@ -9,16 +9,19 @@
   <body>
     <main class="settings">
       <section id="update-banner" class="update-banner" hidden>
-        <div class="update-banner-row">
-          <span id="update-banner-title" class="update-banner-title"></span>
-          <a id="update-changelog" class="update-changelog" href="#" role="button">Changelog</a>
+        <div class="update-banner-head">
+          <div class="update-banner-text">
+            <p class="update-banner-eyebrow">Update available</p>
+            <p id="update-banner-title" class="update-banner-title"></p>
+          </div>
+          <a id="update-changelog" class="update-changelog" href="#" role="button">Changelog ↗</a>
         </div>
         <div class="update-banner-actions">
-          <button id="update-install" type="button">Install</button>
-          <button id="update-later" type="button">Later</button>
-          <button id="update-skip" type="button">Skip this version</button>
+          <button id="update-install" class="btn-primary" type="button">Install</button>
+          <button id="update-later" class="btn-ghost" type="button">Later</button>
+          <button id="update-skip" class="btn-ghost" type="button">Skip this version</button>
+          <span id="update-banner-status" class="update-status"></span>
         </div>
-        <span id="update-banner-status" class="update-status"></span>
       </section>
 
       <h1>Settings</h1>

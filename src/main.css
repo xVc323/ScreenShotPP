@@ -33,15 +33,25 @@ h1 { font-size: 20px; font-weight: 600; }
 .update-banner {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  margin-bottom: 16px;
-  border: 1px solid #1f6feb;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #30363d;
+  border-left: 3px solid #1f6feb;
   border-radius: 8px;
-  background: #0d1f3c;
+  background: #161b22;
 }
-.update-banner-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.update-banner-title { color: #e6edf3; font-size: 14px; font-weight: 600; }
-.update-changelog { color: #58a6ff; font-size: 12px; text-decoration: none; cursor: pointer; }
-.update-changelog:hover { text-decoration: underline; }
-.update-banner-actions { display: flex; gap: 8px; }
+/* L'attribut `hidden` doit l'emporter sur le display ci-dessus. */
+.update-banner[hidden] { display: none; }
+.update-banner-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.update-banner-eyebrow {
+  color: #58a6ff; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.update-banner-title { color: #e6edf3; font-size: 15px; font-weight: 600; margin-top: 2px; }
+.update-changelog { color: #8b949e; font-size: 12px; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.update-changelog:hover { color: #58a6ff; }
+.update-banner-actions { display: flex; gap: 8px; align-items: center; }
+.update-banner .btn-primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+.update-banner .btn-primary:hover { background: #388bfd; }
+.update-banner .btn-ghost { background: transparent; border-color: transparent; color: #8b949e; }
+.update-banner .btn-ghost:hover { background: #21262d; color: #e6edf3; }
