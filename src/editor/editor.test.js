@@ -94,7 +94,60 @@ test("autoSelections prévisualise au survol de la bande haute puis verrouille a
   stage.pointer = { x: 20, y: 14 };
   stage.emit("pointermove");
   stage.emit("pointerdown");
+  // Le verrouillage attend le relâchement : un clic sans glisser sélectionne la fenêtre.
+  assert.equal(editor.hasSelection(), false);
+  stage.emit("pointerup");
   assert.equal(editor.hasSelection(), true);
   assert.deepEqual(done.at(-1), { x: 10, y: 12, width: 50, height: 40 });
   assert.deepEqual(editor.selectionPhysicalRect(), { x: 20, y: 24, width: 100, height: 80 });
+});
+
+test("un glisser depuis la bande haute démarre une sélection libre au lieu de verrouiller la fenêtre", () => {
+  const done = [];
+  const editor = createEditor({
+    container: "stage",
+    scale: 2,
+    autoSelections: [{
+      selection: { x: 10, y: 12, width: 50, height: 40 },
+      activation: { x: 10, y: 12, width: 50, height: 8 },
+    }],
+    onSelectionDone: (selection) => done.push({ ...selection }),
+  });
+
+  // Appui dans la bande d'activation : rien n'est encore verrouillé.
+  stage.pointer = { x: 20, y: 14 };
+  stage.emit("pointerdown");
+  assert.equal(editor.hasSelection(), false);
+
+  // Glisser au-delà du seuil → sélection libre depuis le point d'appui.
+  stage.pointer = { x: 60, y: 50 };
+  stage.emit("pointermove");
+  stage.emit("pointerup");
+
+  assert.equal(editor.hasSelection(), true);
+  assert.deepEqual(done.at(-1), { x: 20, y: 14, width: 40, height: 36 });
+  assert.deepEqual(editor.selectionPhysicalRect(), { x: 40, y: 28, width: 80, height: 72 });
+});
+
+test("un micro-déplacement sous le seuil reste un clic et verrouille la fenêtre", () => {
+  const done = [];
+  const editor = createEditor({
+    container: "stage",
+    scale: 2,
+    autoSelections: [{
+      selection: { x: 10, y: 12, width: 50, height: 40 },
+      activation: { x: 10, y: 12, width: 50, height: 8 },
+    }],
+    onSelectionDone: (selection) => done.push({ ...selection }),
+  });
+
+  stage.pointer = { x: 20, y: 14 };
+  stage.emit("pointerdown");
+  stage.pointer = { x: 22, y: 15 }; // ~2,2 px, sous le seuil de 4
+  stage.emit("pointermove");
+  assert.equal(editor.hasSelection(), false);
+  stage.emit("pointerup");
+
+  assert.equal(editor.hasSelection(), true);
+  assert.deepEqual(done.at(-1), { x: 10, y: 12, width: 50, height: 40 });
 });

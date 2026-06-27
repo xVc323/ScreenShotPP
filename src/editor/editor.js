@@ -4,6 +4,7 @@ import { isEditableTarget } from "../editable-target.js";
 import { mosaicCrop } from "./mosaic.js";
 
 const MIN_SIZE = 2;
+const DRAG_THRESHOLD = 4;
 const MOSAIC_PIXEL = 16;
 const FONT_FAMILY = "Arial";
 const BUBBLE_RADIUS = 15;
@@ -38,6 +39,7 @@ export function createEditor(o = {}) {
   let start = null;
   let nextId = 1;
   let hoverAutoSelection = null;
+  let pendingAutoSelection = null;
 
   stage.add(backgroundLayer);
   stage.add(annotationLayer);
@@ -59,11 +61,16 @@ export function createEditor(o = {}) {
 
     if (!selection) {
       const autoSelection = autoSelectionAt(point);
+      start = clampToStage(point);
       if (autoSelection) {
-        lockSelection(autoSelection.selection);
+        // On diffère la décision : un clic sans glisser verrouillera la fenêtre
+        // (au relâchement), mais un glisser depuis cette zone démarre une
+        // sélection libre depuis le point d'appui.
+        pendingAutoSelection = autoSelection;
+        drawVeil(autoSelection.selection, true);
+        o.onSelectMove?.({ point: { ...start }, rect: autoSelection.selection });
         return;
       }
-      start = clampToStage(point);
       selectionDraft = normalizedRect({ x: start.x, y: start.y, width: 0, height: 0 });
       drawVeil(selectionDraft, true);
       o.onSelectMove?.({ point: { ...start }, rect: selectionDraft });
@@ -106,6 +113,19 @@ export function createEditor(o = {}) {
     // Phase de pré-sélection : la loupe suit le curseur (survol) et la sélection
     // se dessine pendant le glisser. onSelectMove pilote le HUD (loupe + x,y + taille).
     if (!selection) {
+      if (start && pendingAutoSelection) {
+        const point = clampToStage(rawPoint);
+        if (Math.hypot(point.x - start.x, point.y - start.y) >= DRAG_THRESHOLD) {
+          // Le geste est devenu un glisser → on bascule en sélection libre.
+          pendingAutoSelection = null;
+          selectionDraft = normalizedRect({ x: start.x, y: start.y, width: point.x - start.x, height: point.y - start.y });
+          drawVeil(selectionDraft, true);
+        } else {
+          drawVeil(pendingAutoSelection.selection, true);
+        }
+        o.onSelectMove?.({ point, rect: selectionDraft || pendingAutoSelection?.selection || null });
+        return;
+      }
       if (start && selectionDraft) {
         const point = clampToStage(rawPoint);
         selectionDraft = normalizedRect({ x: start.x, y: start.y, width: point.x - start.x, height: point.y - start.y });
@@ -151,6 +171,14 @@ export function createEditor(o = {}) {
     }
     start = null;
 
+    if (!selection && pendingAutoSelection) {
+      // Relâchement sans glisser : c'était un clic → on verrouille la fenêtre.
+      const candidate = pendingAutoSelection;
+      pendingAutoSelection = null;
+      lockSelection(candidate.selection);
+      return;
+    }
+
     if (!selection && selectionDraft) {
       const rect = selectionDraft;
       selectionDraft = null;
@@ -190,6 +218,7 @@ export function createEditor(o = {}) {
     annotationDraft?.node.destroy();
     annotationDraft = null;
     selectionDraft = null;
+    pendingAutoSelection = null;
     start = null;
     if (selection) drawVeil();
     else {
