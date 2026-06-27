@@ -52,6 +52,7 @@ windows = { version = "0.62", features = [
     "Win32_System_Com",
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
     "Win32_UI_WindowsAndMessaging",
 ] }
 # Capture d'écran via Windows Graphics Capture (WGC). Remplace le chemin GDI

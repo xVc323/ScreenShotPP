@@ -16,6 +16,9 @@ use windows_capture::settings::{
     MinimumUpdateIntervalSettings, SecondaryWindowSettings, Settings,
 };
 
+use windows::Win32::Foundation::POINT;
+use windows::Win32::Graphics::Gdi::{MonitorFromPoint, MONITOR_DEFAULTTONEAREST};
+
 /// Convertit un buffer de frame WGC (RGBA8, lignes rembourrées à `stride` octets)
 /// en `RgbaImage` compact. `stride` est le nombre d'octets par ligne dans
 /// `buffer` et peut dépasser `width * 4`.
@@ -74,7 +77,10 @@ impl GraphicsCaptureApiHandler for OneShot {
         let result = match frame.buffer() {
             Ok(mut buf) => {
                 let bytes = buf.as_raw_buffer();
-                frame_to_rgba(bytes, width, height, frame.stride() as usize)
+                // windows-capture n'expose pas le stride : on le déduit de la
+                // longueur du buffer brut (lignes rembourrées) divisée par la hauteur.
+                let stride = if height > 0 { bytes.len() / height as usize } else { 0 };
+                frame_to_rgba(bytes, width, height, stride)
             }
             Err(e) => Err(format!("frame.buffer() a échoué: {e}")),
         };
@@ -93,9 +99,11 @@ impl GraphicsCaptureApiHandler for OneShot {
 /// image en RGBA. Repli sur le moniteur principal si le point n'est sur aucun
 /// moniteur.
 pub fn capture_at_point(x: i32, y: i32) -> Result<RgbaImage, String> {
-    let monitor = Monitor::from_point(x, y)
-        .or_else(|_| Monitor::primary())
-        .map_err(|e| format!("Aucun moniteur pour ({x},{y}): {e}"))?;
+    // windows-capture n'a pas de sélection par point : on récupère le HMONITOR
+    // sous le point via Win32 (MONITOR_DEFAULTTONEAREST gère hors-écran et le
+    // multi-écran / DPI), puis on l'enveloppe.
+    let hmonitor = unsafe { MonitorFromPoint(POINT { x, y }, MONITOR_DEFAULTTONEAREST) };
+    let monitor = Monitor::from_raw_hmonitor(hmonitor.0);
 
     let (tx, rx) = sync_channel::<Result<RgbaImage, String>>(1);
 
