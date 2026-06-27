@@ -49,8 +49,11 @@ pub fn monitor_at(rects: &[MonitorRect], x: i32, y: i32) -> Option<usize> {
         .position(|m| x >= m.x && x < m.x + m.width as i32 && y >= m.y && y < m.y + m.height as i32)
 }
 
-/// Rectangle du moniteur contenant (x, y), ou du moniteur principal en repli.
-pub fn monitor_rect_at(x: i32, y: i32) -> Result<MonitorRect, String> {
+/// Rectangle du moniteur contenant (x, y), ou du moniteur principal en repli,
+/// accompagné de son facteur d'échelle (pixels physiques / points logiques).
+/// Sur macOS, le rectangle est en points logiques (xcap = `CGDisplayBounds`) ;
+/// le scale permet de reconvertir une sélection en pixels physiques de l'image.
+pub fn monitor_rect_at(x: i32, y: i32) -> Result<(MonitorRect, f32), String> {
     let monitors = xcap::Monitor::all().map_err(|e| e.to_string())?;
     let rects: Vec<MonitorRect> = monitors
         .iter()
@@ -67,10 +70,24 @@ pub fn monitor_rect_at(x: i32, y: i32) -> Result<MonitorRect, String> {
             .position(|m| m.is_primary().unwrap_or(false))
             .unwrap_or(0)
     });
-    rects.get(idx).copied().ok_or("Aucun moniteur".to_string())
+    let rect = rects.get(idx).copied().ok_or("Aucun moniteur".to_string())?;
+    let scale = monitors
+        .get(idx)
+        .and_then(|m| m.scale_factor().ok())
+        .unwrap_or(1.0);
+    Ok((rect, scale))
 }
 
 /// Capture le moniteur contenant (x, y), ou le moniteur principal en repli.
+/// Sur Windows : via Windows Graphics Capture (WGC), fiable pour le contenu
+/// composé GPU (partage Teams) et les écrans secondaires / DPI mixtes.
+#[cfg(windows)]
+pub fn capture_at(x: i32, y: i32) -> Result<RgbaImage, String> {
+    crate::capture_win::capture_at_point(x, y)
+}
+
+/// Capture le moniteur contenant (x, y), ou le moniteur principal en repli.
+#[cfg(not(windows))]
 pub fn capture_at(x: i32, y: i32) -> Result<RgbaImage, String> {
     let monitors = xcap::Monitor::all().map_err(|e| e.to_string())?;
     let rects: Vec<MonitorRect> = monitors

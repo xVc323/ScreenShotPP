@@ -9,7 +9,11 @@ pub struct GlobalRect {
 #[cfg(target_os = "macos")]
 mod mac {
     use swift_rs::{swift, SRString};
-    swift!(pub(super) fn foreground_window_selection_json(
+    // Renvoie les bounds bruts (points logiques, origine haut-gauche) de la fenêtre
+    // au premier plan sur ce moniteur, ou "null". Le clipping, la bande d'activation
+    // et le passage en relatif/pixels physiques sont faits côté Rust (code partagé,
+    // testé) — voir foreground_window_selection.
+    swift!(pub(super) fn foreground_window_bounds_json(
         monitor_x: i32,
         monitor_y: i32,
         monitor_width: u32,
@@ -50,6 +54,19 @@ impl GlobalRect {
             height: self.height,
         }
     }
+
+    /// Convertit un rectangle en points logiques vers les pixels physiques de
+    /// l'image capturée (facteur d'échelle Retina). Utilisé sur macOS, où xcap et
+    /// CGWindowList raisonnent en points alors que l'image est en pixels physiques.
+    #[cfg(any(target_os = "macos", test))]
+    fn scaled(self, scale: f64) -> Self {
+        Self {
+            x: (self.x as f64 * scale).round() as i32,
+            y: (self.y as f64 * scale).round() as i32,
+            width: (self.width as f64 * scale).round() as u32,
+            height: (self.height as f64 * scale).round() as u32,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +74,19 @@ pub struct WindowSelectionCandidate {
     pub global_rect: GlobalRect,
     pub monitor_relative_rect: GlobalRect,
     pub monitor_relative_activation_rect: GlobalRect,
+}
+
+impl WindowSelectionCandidate {
+    /// Met à l'échelle les rectangles relatifs au moniteur (points → pixels
+    /// physiques). `global_rect` reste en points (non consommé par le frontend).
+    #[cfg(any(target_os = "macos", test))]
+    fn scaled_relative(self, scale: f64) -> Self {
+        Self {
+            global_rect: self.global_rect,
+            monitor_relative_rect: self.monitor_relative_rect.scaled(scale),
+            monitor_relative_activation_rect: self.monitor_relative_activation_rect.scaled(scale),
+        }
+    }
 }
 
 pub fn auto_band_height(window_height: u32) -> u32 {
@@ -94,8 +124,13 @@ fn activation_rect(window_rect: GlobalRect) -> GlobalRect {
     }
 }
 
+// `_scale` est ignoré sous Windows : DWM/GetWindowRect renvoient déjà des pixels
+// physiques, dans le même espace que xcap et l'image capturée.
 #[cfg(windows)]
-pub fn foreground_window_selection(monitor_rect: GlobalRect) -> Option<WindowSelectionCandidate> {
+pub fn foreground_window_selection(
+    monitor_rect: GlobalRect,
+    _scale: f64,
+) -> Option<WindowSelectionCandidate> {
     use windows::Win32::UI::WindowsAndMessaging::{
         GetAncestor, GetForegroundWindow, IsIconic, IsWindowVisible, GA_ROOT,
     };
@@ -116,59 +151,48 @@ pub fn foreground_window_selection(monitor_rect: GlobalRect) -> Option<WindowSel
 
 #[cfg(not(windows))]
 #[cfg(not(target_os = "macos"))]
-pub fn foreground_window_selection(_monitor_rect: GlobalRect) -> Option<WindowSelectionCandidate> {
+pub fn foreground_window_selection(
+    _monitor_rect: GlobalRect,
+    _scale: f64,
+) -> Option<WindowSelectionCandidate> {
     None
 }
 
+/// macOS : le Swift renvoie les bounds bruts de la fenêtre en points logiques.
+/// On réutilise la géométrie partagée (clipping + bande d'activation + relatif)
+/// puis on convertit les rectangles relatifs en pixels physiques via `scale`,
+/// pour qu'ils coïncident avec l'image capturée (Retina = pixels physiques).
 #[cfg(target_os = "macos")]
-pub fn foreground_window_selection(monitor_rect: GlobalRect) -> Option<WindowSelectionCandidate> {
+pub fn foreground_window_selection(
+    monitor_rect: GlobalRect,
+    scale: f64,
+) -> Option<WindowSelectionCandidate> {
     let json = unsafe {
-        mac::foreground_window_selection_json(
+        mac::foreground_window_bounds_json(
             monitor_rect.x,
             monitor_rect.y,
             monitor_rect.width,
             monitor_rect.height,
         )
     };
-    let response: Option<MacWindowSelection> = serde_json::from_str(&json.to_string()).ok()?;
-    response.map(|selection| WindowSelectionCandidate {
-        global_rect: GlobalRect {
-            x: monitor_rect.x + selection.selection.x as i32,
-            y: monitor_rect.y + selection.selection.y as i32,
-            width: selection.selection.width,
-            height: selection.selection.height,
-        },
-        monitor_relative_rect: selection.selection.into(),
-        monitor_relative_activation_rect: selection.activation.into(),
-    })
-}
-
-#[cfg(target_os = "macos")]
-#[derive(serde::Deserialize)]
-struct MacWindowSelection {
-    selection: MacRect,
-    activation: MacRect,
+    let bounds: MacRect = serde_json::from_str(&json.to_string()).ok()?;
+    let window_rect = GlobalRect {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+    };
+    let candidate = selection_candidate_from_window_rect(window_rect, monitor_rect)?;
+    Some(candidate.scaled_relative(scale))
 }
 
 #[cfg(target_os = "macos")]
 #[derive(Clone, Copy, serde::Deserialize)]
 struct MacRect {
-    x: u32,
-    y: u32,
+    x: i32,
+    y: i32,
     width: u32,
     height: u32,
-}
-
-#[cfg(target_os = "macos")]
-impl From<MacRect> for GlobalRect {
-    fn from(rect: MacRect) -> Self {
-        Self {
-            x: rect.x as i32,
-            y: rect.y as i32,
-            width: rect.width,
-            height: rect.height,
-        }
-    }
 }
 
 #[cfg(windows)]
@@ -292,6 +316,57 @@ mod tests {
                 height: 32
             }
         );
+    }
+
+    #[test]
+    fn scales_logical_points_to_physical_pixels() {
+        // Reproduit le bug Retina : une sélection calculée en points logiques doit
+        // être convertie en pixels physiques (×2 sur un écran 5K "looks like 2560").
+        let monitor = GlobalRect {
+            x: 0,
+            y: 0,
+            width: 2560,
+            height: 1440,
+        };
+        let window = GlobalRect {
+            x: 100,
+            y: 80,
+            width: 800,
+            height: 600,
+        };
+        let candidate = selection_candidate_from_window_rect(window, monitor)
+            .unwrap()
+            .scaled_relative(2.0);
+        assert_eq!(
+            candidate.monitor_relative_rect,
+            GlobalRect {
+                x: 200,
+                y: 160,
+                width: 1600,
+                height: 1200
+            }
+        );
+        // Bande d'activation : 10% de 600 = 60 points → 120 pixels physiques.
+        assert_eq!(
+            candidate.monitor_relative_activation_rect,
+            GlobalRect {
+                x: 200,
+                y: 160,
+                width: 1600,
+                height: 120
+            }
+        );
+    }
+
+    #[test]
+    fn scale_one_is_identity() {
+        let rect = GlobalRect {
+            x: 12,
+            y: 34,
+            width: 56,
+            height: 78,
+        };
+        assert_eq!(rect.scaled(1.0), rect);
     }
 
     #[test]
