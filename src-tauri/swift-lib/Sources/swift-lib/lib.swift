@@ -35,8 +35,13 @@ public func ocr_recognize(_ data: SRData, _ langs: SRString) -> SRString {
     return response(text: lines.joined(separator: "\n"))
 }
 
-@_cdecl("foreground_window_selection_json")
-public func foreground_window_selection_json(
+// Renvoie les bounds bruts de la fenêtre au premier plan située sur ce moniteur,
+// en points logiques (origine haut-gauche, espace CGWindowList), sous la forme
+// {x, y, width, height}, ou "null". Le clipping au moniteur, la bande d'activation
+// et la conversion en pixels physiques sont réalisés côté Rust (code partagé et
+// testé), pour que macOS et Windows suivent le même chemin de géométrie.
+@_cdecl("foreground_window_bounds_json")
+public func foreground_window_bounds_json(
     _ monitorX: Int32,
     _ monitorY: Int32,
     _ monitorWidth: UInt32,
@@ -71,21 +76,18 @@ public func foreground_window_selection_json(
             continue
         }
 
+        // Ne garde que la fenêtre qui recouvre réellement ce moniteur ; le reste
+        // de la géométrie (clipping/relatif) est délégué au Rust.
         let clipped = bounds.intersection(monitor)
         guard !clipped.isNull, clipped.width >= 2, clipped.height >= 2 else {
             continue
         }
 
-        let bandHeight = min(bounds.height, max(32, min(120, (bounds.height * 0.10).rounded())))
-        let activation = CGRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: bandHeight)
-            .intersection(monitor)
-        guard !activation.isNull, activation.width >= 2, activation.height >= 2 else {
-            continue
-        }
-
-        let response: [String: Any] = [
-            "selection": rectObject(clipped, relativeTo: monitor),
-            "activation": rectObject(activation, relativeTo: monitor),
+        let response: [String: Int32] = [
+            "x": Int32(bounds.minX.rounded()),
+            "y": Int32(bounds.minY.rounded()),
+            "width": Int32(max(0, bounds.width.rounded())),
+            "height": Int32(max(0, bounds.height.rounded())),
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: response),
               let json = String(data: data, encoding: .utf8) else {
@@ -95,15 +97,6 @@ public func foreground_window_selection_json(
     }
 
     return SRString("null")
-}
-
-private func rectObject(_ rect: CGRect, relativeTo origin: CGRect) -> [String: UInt32] {
-    return [
-        "x": UInt32(max(0, (rect.minX - origin.minX).rounded())),
-        "y": UInt32(max(0, (rect.minY - origin.minY).rounded())),
-        "width": UInt32(max(0, rect.width.rounded())),
-        "height": UInt32(max(0, rect.height.rounded())),
-    ]
 }
 
 private func response(text: String? = nil, error: String? = nil) -> SRString {

@@ -7,6 +7,13 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+# Optimise les dépendances (image, xcap, …) même en build dev : le traitement
+# pixel par pixel (capture, encodage) y est sinon 10-30× plus lent qu'en release,
+# ce qui dominait la latence de capture. N'affecte pas la vitesse de recompilation
+# de notre propre crate (opt-level 0 conservé pour le code applicatif).
+[profile.dev.package."*"]
+opt-level = 3
+
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.

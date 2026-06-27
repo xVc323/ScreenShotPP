@@ -73,6 +73,33 @@ pub fn encode_png_fast(img: &RgbaImage) -> Result<Vec<u8>, String> {
     Ok(buf)
 }
 
+/// Encodage BMP (en-tête + pixels bruts, aucune compression) pour l'affichage
+/// éphémère dans l'overlay. Contrairement au PNG, il n'y a pas d'étape de
+/// compression deflate : sur une capture 5K c'est ~quasi instantané là où le PNG
+/// « rapide » coûte plusieurs secondes en debug. L'image transite en local
+/// (protocole custom in-process), donc la taille brute n'est pas un problème.
+/// La sauvegarde disque continue d'utiliser `encode_image` (PNG/JPEG compressé).
+pub fn encode_bmp_fast(img: &RgbaImage) -> Result<Vec<u8>, String> {
+    use image::codecs::bmp::BmpEncoder;
+    // WebKit (WKWebView) ne décode pas le BMP 32 bits (en-tête V4) que produit
+    // `image` pour du RGBA. On émet du 24 bits RGB (en-tête BITMAPINFOHEADER
+    // standard), universellement supporté. La capture est opaque : l'alpha est
+    // inutile. La conversion RGBA→RGB est déléguée au crate `image` (code de la
+    // dépendance, optimisé même en profil dev — cf. [profile.dev.package."*"]).
+    use image::buffer::ConvertBuffer;
+    let rgb: image::RgbImage = img.convert();
+    let mut buf = Vec::new();
+    BmpEncoder::new(&mut buf)
+        .encode(
+            rgb.as_raw(),
+            rgb.width(),
+            rgb.height(),
+            ExtendedColorType::Rgb8,
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(buf)
+}
+
 /// Décode des octets PNG en image RGBA.
 pub fn decode_png_to_rgba(png: &[u8]) -> Result<RgbaImage, String> {
     image::load_from_memory_with_format(png, ImageFormat::Png)
@@ -190,6 +217,13 @@ mod tests {
         let img = RgbaImage::new(8, 8);
         let bytes = encode_png_fast(&img).unwrap();
         assert_eq!(&bytes[0..4], &[0x89, 0x50, 0x4E, 0x47]);
+    }
+
+    #[test]
+    fn fast_bmp_encoding_starts_with_bmp_magic_bytes() {
+        let img = RgbaImage::new(8, 8);
+        let bytes = encode_bmp_fast(&img).unwrap();
+        assert_eq!(&bytes[0..2], b"BM");
     }
 
     #[test]

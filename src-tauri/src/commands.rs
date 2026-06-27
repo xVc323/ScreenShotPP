@@ -33,14 +33,15 @@ pub struct WindowSelection {
 pub fn start_capture(app: AppHandle) -> Result<(), String> {
     let cursor = app.cursor_position().map_err(|e| e.to_string())?;
     let (cx, cy) = (cursor.x as i32, cursor.y as i32);
-    let monitor_rect = capture::monitor_rect_at(cx, cy)?;
+    let (monitor_rect, monitor_scale) = capture::monitor_rect_at(cx, cy)?;
     let monitor_global_rect = window_pick::GlobalRect {
         x: monitor_rect.x,
         y: monitor_rect.y,
         width: monitor_rect.width,
         height: monitor_rect.height,
     };
-    let window_selections = window_pick::foreground_window_selection(monitor_global_rect)
+    let window_selections =
+        window_pick::foreground_window_selection(monitor_global_rect, monitor_scale as f64)
         .into_iter()
         .map(|candidate| WindowSelection {
             selection: rect_from_global(candidate.monitor_relative_rect),

@@ -28,18 +28,21 @@ pub fn run() {
             let state = app.state::<CaptureState>();
             let guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
             match guard.as_ref() {
-                Some(session) => match storage::encode_png_fast(&session.image) {
-                    Ok(png) => tauri::http::Response::builder()
-                        .header("Content-Type", "image/png")
-                        .header("Access-Control-Allow-Origin", "*")
-                        .header("Cache-Control", "no-store")
-                        .body(png)
-                        .unwrap(),
-                    Err(_) => tauri::http::Response::builder()
-                        .status(500)
-                        .body(Vec::new())
-                        .unwrap(),
-                },
+                Some(session) => {
+                    let encoded = storage::encode_bmp_fast(&session.image);
+                    match encoded {
+                        Ok(bmp) => tauri::http::Response::builder()
+                            .header("Content-Type", "image/bmp")
+                            .header("Access-Control-Allow-Origin", "*")
+                            .header("Cache-Control", "no-store")
+                            .body(bmp)
+                            .unwrap(),
+                        Err(_) => tauri::http::Response::builder()
+                            .status(500)
+                            .body(Vec::new())
+                            .unwrap(),
+                    }
+                }
                 None => tauri::http::Response::builder()
                     .status(404)
                     .body(Vec::new())
