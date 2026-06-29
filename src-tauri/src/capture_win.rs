@@ -70,20 +70,26 @@ impl GraphicsCaptureApiHandler for OneShot {
         frame: &mut Frame,
         capture_control: InternalCaptureControl,
     ) -> Result<(), Self::Error> {
-        let width = frame.width();
-        let height = frame.height();
-        // Le buffer brut conserve le rembourrage de ligne ; `stride()` donne le
-        // nombre d'octets par ligne. `frame_to_rgba` enlève le rembourrage.
-        let result = match frame.buffer() {
-            Ok(mut buf) => {
-                let bytes = buf.as_raw_buffer();
-                // windows-capture n'expose pas le stride : on le déduit de la
-                // longueur du buffer brut (lignes rembourrées) divisée par la hauteur.
-                let stride = if height > 0 { bytes.len() / height as usize } else { 0 };
-                frame_to_rgba(bytes, width, height, stride)
+        // `on_frame_arrived` est appelé sous la boucle de messages WGC (DispatchMessage,
+        // code C). Un panic qui en sortirait traverserait le FFI → abort du processus
+        // (0xc0000409). On l'isole donc dans un catch_unwind et on le convertit en Err.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let width = frame.width();
+            let height = frame.height();
+            // Le buffer brut conserve le rembourrage de ligne ; `stride()` donne le
+            // nombre d'octets par ligne. `frame_to_rgba` enlève le rembourrage.
+            match frame.buffer() {
+                Ok(mut buf) => {
+                    let bytes = buf.as_raw_buffer();
+                    // windows-capture n'expose pas le stride : on le déduit de la
+                    // longueur du buffer brut (lignes rembourrées) divisée par la hauteur.
+                    let stride = if height > 0 { bytes.len() / height as usize } else { 0 };
+                    frame_to_rgba(bytes, width, height, stride)
+                }
+                Err(e) => Err(format!("frame.buffer() a échoué: {e}")),
             }
-            Err(e) => Err(format!("frame.buffer() a échoué: {e}")),
-        };
+        }))
+        .unwrap_or_else(|_| Err("Panique pendant la conversion de la frame WGC".to_string()));
         // Best-effort : si le récepteur a disparu, on s'arrête quand même.
         let _ = self.sink.try_send(result);
         capture_control.stop();
@@ -98,7 +104,33 @@ impl GraphicsCaptureApiHandler for OneShot {
 /// Capture le moniteur contenant le point physique (x, y) via WGC et renvoie son
 /// image en RGBA. Repli sur le moniteur principal si le point n'est sur aucun
 /// moniteur.
+///
+/// La capture est exécutée sur un thread dédié, neuf : `windows-capture` initialise
+/// COM et crée un `DispatcherQueue` + une boucle de messages sur le thread appelant.
+/// Lancée directement depuis le callback du raccourci global (thread GUI principal,
+/// qui possède déjà un DispatcherQueue / un apartment COM), la crate paniquait en
+/// interne, et ce panic traversait la frontière FFI → abort du processus (0xc0000409).
+/// Un thread frais résout le conflit ; `catch_unwind` garantit qu'un panic résiduel
+/// devient une `Err` au lieu de fermer l'application.
 pub fn capture_at_point(x: i32, y: i32) -> Result<RgbaImage, String> {
+    let handle = std::thread::Builder::new()
+        .name("wgc-capture".into())
+        .spawn(move || {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                capture_at_point_inner(x, y)
+            }))
+            .unwrap_or_else(|_| {
+                Err("Capture WGC: panique interne (WGC indisponible sur ce poste ?)".to_string())
+            })
+        })
+        .map_err(|e| format!("Échec du lancement du thread de capture WGC: {e}"))?;
+    handle
+        .join()
+        .map_err(|_| "Le thread de capture WGC a paniqué".to_string())?
+}
+
+/// Corps de la capture WGC, exécuté sur le thread dédié de `capture_at_point`.
+fn capture_at_point_inner(x: i32, y: i32) -> Result<RgbaImage, String> {
     // windows-capture n'a pas de sélection par point : on récupère le HMONITOR
     // sous le point via Win32 (MONITOR_DEFAULTTONEAREST gère hors-écran et le
     // multi-écran / DPI), puis on l'enveloppe.
