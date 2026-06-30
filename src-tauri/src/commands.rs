@@ -3,8 +3,11 @@ use crate::window_pick;
 use crate::{clipboard, storage};
 use base64::Engine;
 use image::RgbaImage;
-use std::sync::Mutex;
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 /// Capture courante gelée, partagée entre commands.
 #[derive(Default)]
@@ -28,9 +31,14 @@ pub struct WindowSelection {
     pub activation: capture::Rect,
 }
 
-/// Déclenché par le raccourci : capture l'écran, stocke l'image, ouvre l'overlay.
-/// La création de la fenêtre est faite sur le thread principal (exigence macOS).
+/// Déclenché par le raccourci instantané : capture immédiate puis overlay.
 pub fn start_capture(app: AppHandle) -> Result<(), String> {
+    begin_capture(app)
+}
+
+/// Corps partagé : lit le curseur, capture l'écran, stocke l'image, ouvre l'overlay.
+/// La création de la fenêtre est faite sur le thread principal (exigence macOS).
+fn begin_capture(app: AppHandle) -> Result<(), String> {
     let cursor = app.cursor_position().map_err(|e| e.to_string())?;
     let (cx, cy) = (cursor.x as i32, cursor.y as i32);
     let (monitor_rect, monitor_scale) = capture::monitor_rect_at(cx, cy)?;
@@ -112,6 +120,123 @@ pub fn start_capture(app: AppHandle) -> Result<(), String> {
         }
     })
     .map_err(|e| e.to_string())
+}
+
+/// Déclenché par le raccourci de capture différée : affiche un compte à rebours
+/// qui suit le curseur, annulable, puis lance la capture quand il atteint 0.
+pub fn start_delayed_capture(app: AppHandle) -> Result<(), String> {
+    let (total_secs, cancel_shortcut) = {
+        let s = app
+            .state::<crate::settings::SettingsState>()
+            .0
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        (s.capture_delay_secs.max(1), s.cancel_shortcut.clone())
+    };
+
+    // Taille physique de la fenêtre (logique 64 px × scale du moniteur sous le curseur).
+    let cursor = app.cursor_position().map_err(|e| e.to_string())?;
+    let (cx, cy) = (cursor.x as i32, cursor.y as i32);
+    let (monitor_rect, scale) = crate::capture::monitor_rect_at(cx, cy)?;
+    let win_px = (64.0 * scale as f64).round() as u32;
+
+    // Crée la fenêtre du compteur sur le thread principal.
+    let app_main = app.clone();
+    app.run_on_main_thread(move || {
+        if let Some(w) = app_main.get_webview_window("countdown") {
+            let _ = w.close();
+        }
+        let builder = WebviewWindowBuilder::new(
+            &app_main,
+            "countdown",
+            WebviewUrl::App("countdown.html".into()),
+        )
+        .title("Countdown")
+        .always_on_top(true)
+        .decorations(false)
+        .skip_taskbar(true)
+        .focused(false)
+        .resizable(false)
+        .visible(false)
+        .transparent(true)
+        .inner_size(64.0, 64.0);
+        match builder.build() {
+            Ok(w) => {
+                let _ = w.set_ignore_cursor_events(true);
+            }
+            Err(e) => eprintln!("Création du compteur échouée: {e}"),
+        }
+    })
+    .map_err(|e| e.to_string())?;
+
+    // Drapeau d'annulation + enregistrement du raccourci d'annulation temporaire.
+    let cancelled = Arc::new(AtomicBool::new(false));
+    {
+        let flag = cancelled.clone();
+        app.global_shortcut()
+            .on_shortcut(cancel_shortcut.as_str(), move |_app, _sc, event| {
+                if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                    flag.store(true, Ordering::SeqCst);
+                }
+            })
+            .map_err(|e| format!("Échec d'enregistrement du raccourci d'annulation: {e}"))?;
+    }
+
+    // Boucle de décompte sur un thread dédié (ne bloque pas le thread principal).
+    let app_loop = app.clone();
+    let cancel_sc = cancel_shortcut.clone();
+    std::thread::spawn(move || {
+        let start = Instant::now();
+        loop {
+            let elapsed = start.elapsed().as_millis();
+            if cancelled.load(Ordering::SeqCst) {
+                break;
+            }
+            let remaining = crate::countdown::remaining_seconds(total_secs, elapsed);
+            if remaining == 0 {
+                break;
+            }
+            // Position de la fenêtre sous le curseur + chiffre courant.
+            if let Ok(pos) = app_loop.cursor_position() {
+                let (px, py) = crate::countdown::window_origin(
+                    (pos.x as i32, pos.y as i32),
+                    (win_px, win_px),
+                    monitor_rect,
+                );
+                let app_pos = app_loop.clone();
+                let _ = app_pos.run_on_main_thread(move || {
+                    if let Some(w) = app_pos.get_webview_window("countdown") {
+                        let _ = w.set_position(tauri::PhysicalPosition::new(px, py));
+                        let _ = w.show();
+                    }
+                });
+            }
+            let _ = app_loop.emit_to("countdown", "countdown-tick", remaining);
+            std::thread::sleep(Duration::from_millis(33));
+        }
+
+        let was_cancelled = cancelled.load(Ordering::SeqCst);
+
+        // Ferme le compteur AVANT de capturer (il ne doit pas apparaître).
+        let app_close = app_loop.clone();
+        let _ = app_close.run_on_main_thread(move || {
+            if let Some(w) = app_close.get_webview_window("countdown") {
+                let _ = w.close();
+            }
+        });
+        // Libère le raccourci d'annulation dans tous les cas.
+        let _ = app_loop.global_shortcut().unregister(cancel_sc.as_str());
+
+        if !was_cancelled {
+            // Petit répit pour laisser le compositor retirer la fenêtre du compteur.
+            std::thread::sleep(Duration::from_millis(60));
+            if let Err(e) = begin_capture(app_loop.clone()) {
+                eprintln!("Capture différée échouée: {e}");
+            }
+        }
+    });
+
+    Ok(())
 }
 
 /// L'overlay récupère la capture gelée en PNG (data URL base64) pour l'afficher.
