@@ -16,6 +16,9 @@ const folderEl = document.getElementById("folder");
 const formatSel = document.getElementById("format");
 const langSel = document.getElementById("ocr-language");
 const launchAtLogin = document.getElementById("launch-at-login");
+const delayedShortcutBtn = document.getElementById("delayed-shortcut");
+const captureDelayEl = document.getElementById("capture-delay");
+const cancelShortcutBtn = document.getElementById("cancel-shortcut");
 
 let settings = await invoke("get_settings");
 render();
@@ -23,6 +26,9 @@ document.getElementById("version").textContent = await invoke("app_version");
 
 function render() {
   shortcutBtn.textContent = settings.capture_shortcut;
+  delayedShortcutBtn.textContent = settings.delayed_capture_shortcut;
+  captureDelayEl.value = settings.capture_delay_secs;
+  cancelShortcutBtn.textContent = settings.cancel_shortcut;
   folderEl.textContent = settings.default_save_folder || "Desktop";
   formatSel.value = settings.default_format;
   langSel.value = settings.ocr_language;
@@ -38,24 +44,43 @@ async function persist() {
   }
 }
 
-// Enregistreur de touches pour le raccourci.
-let recording = false;
-shortcutBtn.addEventListener("click", () => {
-  recording = true;
-  shortcutBtn.textContent = "Press a combination…";
-});
+// Enregistreur de touches partagé pour les boutons de raccourci.
+let recordingField = null; // "capture_shortcut" | "delayed_capture_shortcut" | "cancel_shortcut"
+let recordingBtn = null;
+
+function startRecording(field, btn) {
+  recordingField = field;
+  recordingBtn = btn;
+  btn.textContent = "Press a combination…";
+}
+
+shortcutBtn.addEventListener("click", () =>
+  startRecording("capture_shortcut", shortcutBtn),
+);
+delayedShortcutBtn.addEventListener("click", () =>
+  startRecording("delayed_capture_shortcut", delayedShortcutBtn),
+);
+cancelShortcutBtn.addEventListener("click", () =>
+  startRecording("cancel_shortcut", cancelShortcutBtn),
+);
+
 window.addEventListener("keydown", async (event) => {
-  if (!recording) return;
+  if (!recordingField) return;
   event.preventDefault();
-  if (event.key === "Escape") {
-    recording = false;
+  // Pour le champ d'annulation, Escape est une valeur valide ; ailleurs il annule.
+  if (event.key === "Escape" && recordingField !== "cancel_shortcut") {
+    recordingField = null;
+    recordingBtn = null;
     render();
     return;
   }
-  const accelerator = keyEventToAccelerator(event);
+  const accelerator =
+    event.key === "Escape" ? "Escape" : keyEventToAccelerator(event);
   if (!accelerator) return; // attend une vraie touche (pas que des modificateurs)
-  recording = false;
-  settings = { ...settings, capture_shortcut: accelerator };
+  const field = recordingField;
+  recordingField = null;
+  recordingBtn = null;
+  settings = { ...settings, [field]: accelerator };
   render();
   await persist();
 });
@@ -80,6 +105,13 @@ langSel.addEventListener("change", async () => {
 
 launchAtLogin.addEventListener("change", async () => {
   settings = { ...settings, launch_at_login: launchAtLogin.checked };
+  await persist();
+});
+
+captureDelayEl.addEventListener("change", async () => {
+  const secs = Math.min(60, Math.max(1, parseInt(captureDelayEl.value, 10) || 3));
+  settings = { ...settings, capture_delay_secs: secs };
+  render();
   await persist();
 });
 
