@@ -4314,6 +4314,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "image",
+ "screenshotpp-core",
  "serde",
  "serde_json",
  "swift-rs",
@@ -4329,6 +4330,14 @@ dependencies = [
  "windows 0.62.2",
  "windows-capture",
  "xcap",
+]
+
+[[package]]
+name = "screenshotpp-core"
+version = "0.2.2"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

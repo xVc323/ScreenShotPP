@@ -7,20 +7,19 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+  # Signal rapide (~2 min) : logique pure testable sans la chaîne Tauri.
+  # `screenshotpp-core` ne dépend que de serde, et les tests JS sont du node pur,
+  # donc tout tourne sur ubuntu (le runner le plus rapide).
+  fast:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-      - name: Cargo tests (logique pure)
-        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+      - name: Cargo tests core (logique pure)
+        run: cargo test --manifest-path src-tauri/Cargo.toml -p screenshotpp-core
       - uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -29,3 +28,29 @@ jobs:
       - name: Release storefront readiness
         shell: bash
         run: scripts/check-release-readiness.sh
+
+  # Validation de la build app complète (Tauri/xcap, dépendantes de l'OS).
+  # Sur Windows, on force cargo à utiliser le disque D: (plus rapide que C: pour
+  # les charges « beaucoup de petits fichiers » d'une compil Rust) — gain I/O
+  # notable. L'env est posé AVANT le cache pour que rust-cache vise le bon dossier.
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: "Use D: drive for cargo (Windows)"
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path D:\cargo, D:\target | Out-Null
+          "CARGO_HOME=D:\cargo" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "CARGO_TARGET_DIR=D:\target" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ runner.os == 'Windows' && 'src-tauri -> D:\target' || 'src-tauri' }}
+      - name: Cargo tests (logique pure)
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib

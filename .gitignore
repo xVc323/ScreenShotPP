@@ -39,3 +39,6 @@ Certificates.p12
 
 # Internal planning artifacts
 /docs/superpowers/
+
+# local zig-linker shim (machine-specific, no system cc)
+/src-tauri/.cargo/config.toml

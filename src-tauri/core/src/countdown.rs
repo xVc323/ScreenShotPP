@@ -1,7 +1,7 @@
 //! Aides pures pour la capture différée (compte à rebours).
 //! La partie intégration OS (fenêtre, boucle) vit dans `commands.rs`.
 
-use crate::capture::MonitorRect;
+use crate::geometry::MonitorRect;
 
 /// Secondes entières restantes à afficher pour un décompte de `total_secs`
 /// après `elapsed_ms` écoulées. Vaut `total_secs` à 0 ms et atteint 0 à
