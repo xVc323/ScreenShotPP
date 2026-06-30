@@ -4332,6 +4332,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "screenshotpp-core"
+version = "0.2.2"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "security-framework"
 version = "3.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
