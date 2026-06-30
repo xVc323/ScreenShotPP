@@ -129,11 +129,8 @@ fn begin_capture(app: AppHandle) -> Result<(), String> {
 /// qui suit le curseur, annulable, puis lance la capture quand il atteint 0.
 pub fn start_delayed_capture(app: AppHandle) -> Result<(), String> {
     let (total_secs, cancel_shortcut) = {
-        let s = app
-            .state::<crate::settings::SettingsState>()
-            .0
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let state = app.state::<crate::settings::SettingsState>();
+        let s = state.0.lock().unwrap_or_else(|e| e.into_inner());
         (s.capture_delay_secs.max(1), s.cancel_shortcut.clone())
     };
 
@@ -217,7 +214,7 @@ pub fn start_delayed_capture(app: AppHandle) -> Result<(), String> {
         ) {
             DELAYED_RUNNING.store(false, Ordering::SeqCst);
             let app_cleanup = app.clone();
-            let _ = app_cleanup.run_on_main_thread(move || {
+            let _ = app.run_on_main_thread(move || {
                 if let Some(w) = app_cleanup.get_webview_window("countdown") {
                     let _ = w.close();
                 }
@@ -251,7 +248,7 @@ pub fn start_delayed_capture(app: AppHandle) -> Result<(), String> {
                 let app_pos = app_loop.clone();
                 let do_show = !shown;
                 shown = true;
-                let _ = app_pos.run_on_main_thread(move || {
+                let _ = app_loop.run_on_main_thread(move || {
                     if let Some(w) = app_pos.get_webview_window("countdown") {
                         let _ = w.set_position(tauri::PhysicalPosition::new(px, py));
                         if do_show {
@@ -268,7 +265,7 @@ pub fn start_delayed_capture(app: AppHandle) -> Result<(), String> {
 
         // Ferme le compteur AVANT de capturer (il ne doit pas apparaître).
         let app_close = app_loop.clone();
-        let _ = app_close.run_on_main_thread(move || {
+        let _ = app_loop.run_on_main_thread(move || {
             if let Some(w) = app_close.get_webview_window("countdown") {
                 let _ = w.close();
             }
