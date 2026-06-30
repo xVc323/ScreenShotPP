@@ -186,6 +186,7 @@ pub fn start_delayed_capture(app: AppHandle) -> Result<(), String> {
         .decorations(false)
         .skip_taskbar(true)
         .focused(false)
+        .focusable(false)
         .resizable(false)
         .visible(false)
         .transparent(true)
@@ -230,6 +231,7 @@ pub fn start_delayed_capture(app: AppHandle) -> Result<(), String> {
     let cancel_sc = cancel_shortcut.clone();
     std::thread::spawn(move || {
         let start = Instant::now();
+        let mut shown = false;
         loop {
             let elapsed = start.elapsed().as_millis();
             if cancelled.load(Ordering::SeqCst) {
@@ -247,10 +249,14 @@ pub fn start_delayed_capture(app: AppHandle) -> Result<(), String> {
                     monitor_rect,
                 );
                 let app_pos = app_loop.clone();
+                let do_show = !shown;
+                shown = true;
                 let _ = app_pos.run_on_main_thread(move || {
                     if let Some(w) = app_pos.get_webview_window("countdown") {
                         let _ = w.set_position(tauri::PhysicalPosition::new(px, py));
-                        let _ = w.show();
+                        if do_show {
+                            let _ = w.show();
+                        }
                     }
                 });
             }
