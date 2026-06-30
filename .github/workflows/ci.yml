@@ -21,6 +21,8 @@ jobs:
           workspaces: src-tauri
       - name: Cargo tests (logique pure)
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+      - name: Cargo tests core (logique pure)
+        run: cargo test --manifest-path src-tauri/Cargo.toml -p screenshotpp-core
       - uses: actions/setup-node@v6
         with:
           node-version: 22
