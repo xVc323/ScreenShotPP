@@ -8,6 +8,22 @@ pub struct Settings {
     pub ocr_language: String,    // "auto" | code langue
     #[serde(default)]
     pub launch_at_login: bool, // lancer l'app à l'ouverture de session
+    #[serde(default = "default_delayed_capture_shortcut")]
+    pub delayed_capture_shortcut: String, // raccourci de capture différée
+    #[serde(default = "default_capture_delay_secs")]
+    pub capture_delay_secs: u32, // durée du compte à rebours, en secondes
+    #[serde(default = "default_cancel_shortcut")]
+    pub cancel_shortcut: String, // raccourci d'annulation pendant le décompte
+}
+
+fn default_delayed_capture_shortcut() -> String {
+    "CmdOrCtrl+Shift+3".to_string()
+}
+fn default_capture_delay_secs() -> u32 {
+    3
+}
+fn default_cancel_shortcut() -> String {
+    "Escape".to_string()
 }
 
 impl Default for Settings {
@@ -18,6 +34,9 @@ impl Default for Settings {
             default_format: "png".to_string(),
             ocr_language: "auto".to_string(),
             launch_at_login: false,
+            delayed_capture_shortcut: default_delayed_capture_shortcut(),
+            capture_delay_secs: default_capture_delay_secs(),
+            cancel_shortcut: default_cancel_shortcut(),
         }
     }
 }
@@ -100,5 +119,29 @@ mod tests {
     fn loading_missing_file_yields_defaults() {
         let path = std::path::Path::new("/tmp/sspp-does-not-exist-xyz123.json");
         assert_eq!(load_from_path(path), Settings::default());
+    }
+
+    #[test]
+    fn default_settings_have_delayed_capture_values() {
+        let s = Settings::default();
+        assert_eq!(s.delayed_capture_shortcut, "CmdOrCtrl+Shift+3");
+        assert_eq!(s.capture_delay_secs, 3);
+        assert_eq!(s.cancel_shortcut, "Escape");
+    }
+
+    #[test]
+    fn old_settings_json_without_delayed_fields_still_loads() {
+        // JSON écrit par une version antérieure (sans les champs de capture différée).
+        let json = r#"{
+            "capture_shortcut": "CmdOrCtrl+Shift+2",
+            "default_save_folder": "",
+            "default_format": "png",
+            "ocr_language": "auto",
+            "launch_at_login": false
+        }"#;
+        let s: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(s.delayed_capture_shortcut, "CmdOrCtrl+Shift+3");
+        assert_eq!(s.capture_delay_secs, 3);
+        assert_eq!(s.cancel_shortcut, "Escape");
     }
 }

@@ -3,8 +3,14 @@ use crate::window_pick;
 use crate::{clipboard, storage};
 use base64::Engine;
 use image::RgbaImage;
-use std::sync::Mutex;
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
+
+/// Empêche deux captures différées simultanées (double appui du raccourci).
+static DELAYED_RUNNING: AtomicBool = AtomicBool::new(false);
 
 /// Capture courante gelée, partagée entre commands.
 #[derive(Default)]
@@ -28,9 +34,14 @@ pub struct WindowSelection {
     pub activation: capture::Rect,
 }
 
-/// Déclenché par le raccourci : capture l'écran, stocke l'image, ouvre l'overlay.
-/// La création de la fenêtre est faite sur le thread principal (exigence macOS).
+/// Déclenché par le raccourci instantané : capture immédiate puis overlay.
 pub fn start_capture(app: AppHandle) -> Result<(), String> {
+    begin_capture(app)
+}
+
+/// Corps partagé : lit le curseur, capture l'écran, stocke l'image, ouvre l'overlay.
+/// La création de la fenêtre est faite sur le thread principal (exigence macOS).
+fn begin_capture(app: AppHandle) -> Result<(), String> {
     let cursor = app.cursor_position().map_err(|e| e.to_string())?;
     let (cx, cy) = (cursor.x as i32, cursor.y as i32);
     let (monitor_rect, monitor_scale) = capture::monitor_rect_at(cx, cy)?;
@@ -112,6 +123,167 @@ pub fn start_capture(app: AppHandle) -> Result<(), String> {
         }
     })
     .map_err(|e| e.to_string())
+}
+
+/// Déclenché par le raccourci de capture différée : affiche un compte à rebours
+/// qui suit le curseur, annulable, puis lance la capture quand il atteint 0.
+pub fn start_delayed_capture(app: AppHandle) -> Result<(), String> {
+    let (total_secs, cancel_shortcut) = {
+        let state = app.state::<crate::settings::SettingsState>();
+        let s = state.0.lock().unwrap_or_else(|e| e.into_inner());
+        (s.capture_delay_secs.max(1), s.cancel_shortcut.clone())
+    };
+
+    // Moniteur Tauri sous le curseur. Ses position/taille sont en pixels physiques
+    // sur toutes les plateformes, comme `cursor_position()` — on reste donc dans un
+    // seul espace de coordonnées (évite le décalage Retina de `monitor_rect_at`).
+    let cursor = app.cursor_position().map_err(|e| e.to_string())?;
+    let (cx, cy) = (cursor.x as i32, cursor.y as i32);
+    let monitors = app.available_monitors().map_err(|e| e.to_string())?;
+    if monitors.is_empty() {
+        return Err("Aucun moniteur disponible".to_string());
+    }
+    let idx = monitors
+        .iter()
+        .position(|m| {
+            let p = m.position();
+            let s = m.size();
+            cx >= p.x && cx < p.x + s.width as i32 && cy >= p.y && cy < p.y + s.height as i32
+        })
+        .unwrap_or(0);
+    let target = &monitors[idx];
+    let mp = target.position();
+    let ms = target.size();
+    let monitor_rect = crate::capture::MonitorRect {
+        x: mp.x,
+        y: mp.y,
+        width: ms.width,
+        height: ms.height,
+    };
+    let win_px = (64.0 * target.scale_factor()).round() as u32;
+
+    // Empêche deux décomptes simultanés (réinitialisé en fin de thread / sur erreur).
+    if DELAYED_RUNNING.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
+
+    // Crée la fenêtre du compteur sur le thread principal.
+    let app_main = app.clone();
+    let main_thread_result = app.run_on_main_thread(move || {
+        if let Some(w) = app_main.get_webview_window("countdown") {
+            let _ = w.close();
+        }
+        let builder = WebviewWindowBuilder::new(
+            &app_main,
+            "countdown",
+            WebviewUrl::App("countdown.html".into()),
+        )
+        .title("Countdown")
+        .always_on_top(true)
+        .decorations(false)
+        .skip_taskbar(true)
+        .focused(false)
+        .focusable(false)
+        .resizable(false)
+        .visible(false)
+        .transparent(true)
+        .inner_size(64.0, 64.0);
+        match builder.build() {
+            Ok(w) => {
+                let _ = w.set_ignore_cursor_events(true);
+            }
+            Err(e) => eprintln!("Création du compteur échouée: {e}"),
+        }
+    });
+    if let Err(e) = main_thread_result {
+        DELAYED_RUNNING.store(false, Ordering::SeqCst);
+        return Err(e.to_string());
+    }
+
+    // Drapeau d'annulation + enregistrement du raccourci d'annulation temporaire.
+    let cancelled = Arc::new(AtomicBool::new(false));
+    {
+        let flag = cancelled.clone();
+        if let Err(e) = app.global_shortcut().on_shortcut(
+            cancel_shortcut.as_str(),
+            move |_app, _sc, event| {
+                if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                    flag.store(true, Ordering::SeqCst);
+                }
+            },
+        ) {
+            DELAYED_RUNNING.store(false, Ordering::SeqCst);
+            let app_cleanup = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                if let Some(w) = app_cleanup.get_webview_window("countdown") {
+                    let _ = w.close();
+                }
+            });
+            return Err(format!("Échec d'enregistrement du raccourci d'annulation: {e}"));
+        }
+    }
+
+    // Boucle de décompte sur un thread dédié (ne bloque pas le thread principal).
+    let app_loop = app.clone();
+    let cancel_sc = cancel_shortcut.clone();
+    std::thread::spawn(move || {
+        let start = Instant::now();
+        let mut shown = false;
+        loop {
+            let elapsed = start.elapsed().as_millis();
+            if cancelled.load(Ordering::SeqCst) {
+                break;
+            }
+            let remaining = crate::countdown::remaining_seconds(total_secs, elapsed);
+            if remaining == 0 {
+                break;
+            }
+            // Position de la fenêtre sous le curseur + chiffre courant.
+            if let Ok(pos) = app_loop.cursor_position() {
+                let (px, py) = crate::countdown::window_origin(
+                    (pos.x as i32, pos.y as i32),
+                    (win_px, win_px),
+                    monitor_rect,
+                );
+                let app_pos = app_loop.clone();
+                let do_show = !shown;
+                shown = true;
+                let _ = app_loop.run_on_main_thread(move || {
+                    if let Some(w) = app_pos.get_webview_window("countdown") {
+                        let _ = w.set_position(tauri::PhysicalPosition::new(px, py));
+                        if do_show {
+                            let _ = w.show();
+                        }
+                    }
+                });
+            }
+            let _ = app_loop.emit_to("countdown", "countdown-tick", remaining);
+            std::thread::sleep(Duration::from_millis(33));
+        }
+
+        let was_cancelled = cancelled.load(Ordering::SeqCst);
+
+        // Ferme le compteur AVANT de capturer (il ne doit pas apparaître).
+        let app_close = app_loop.clone();
+        let _ = app_loop.run_on_main_thread(move || {
+            if let Some(w) = app_close.get_webview_window("countdown") {
+                let _ = w.close();
+            }
+        });
+        // Libère le raccourci d'annulation dans tous les cas.
+        let _ = app_loop.global_shortcut().unregister(cancel_sc.as_str());
+
+        if !was_cancelled {
+            // Petit répit pour laisser le compositor retirer la fenêtre du compteur.
+            std::thread::sleep(Duration::from_millis(60));
+            if let Err(e) = begin_capture(app_loop.clone()) {
+                eprintln!("Capture différée échouée: {e}");
+            }
+        }
+        DELAYED_RUNNING.store(false, Ordering::SeqCst);
+    });
+
+    Ok(())
 }
 
 /// L'overlay récupère la capture gelée en PNG (data URL base64) pour l'afficher.
@@ -237,7 +409,11 @@ pub fn update_settings(
     app: AppHandle,
     new_settings: crate::settings::Settings,
 ) -> Result<(), String> {
-    crate::hotkey::reregister(&app, &new_settings.capture_shortcut)?;
+    crate::hotkey::reregister_all(
+        &app,
+        &new_settings.capture_shortcut,
+        &new_settings.delayed_capture_shortcut,
+    )?;
     {
         use tauri_plugin_autostart::ManagerExt;
         let autolaunch = app.autolaunch();

@@ -3,6 +3,7 @@ mod capture;
 mod capture_win;
 mod clipboard;
 mod commands;
+mod countdown;
 mod hotkey;
 mod ocr;
 mod settings;
@@ -78,6 +79,10 @@ pub fn run() {
 
             let settings = settings::load(app.handle());
             hotkey::register_capture_shortcut(app.handle(), &settings.capture_shortcut)?;
+            hotkey::register_delayed_capture_shortcut(
+                app.handle(),
+                &settings.delayed_capture_shortcut,
+            )?;
             {
                 use tauri_plugin_autostart::ManagerExt;
                 let autolaunch = app.autolaunch();
