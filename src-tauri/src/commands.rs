@@ -9,6 +9,9 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
+/// Empêche deux captures différées simultanées (double appui du raccourci).
+static DELAYED_RUNNING: AtomicBool = AtomicBool::new(false);
+
 /// Capture courante gelée, partagée entre commands.
 #[derive(Default)]
 pub struct CaptureState(pub Mutex<Option<CaptureSession>>);
@@ -134,15 +137,42 @@ pub fn start_delayed_capture(app: AppHandle) -> Result<(), String> {
         (s.capture_delay_secs.max(1), s.cancel_shortcut.clone())
     };
 
-    // Taille physique de la fenêtre (logique 64 px × scale du moniteur sous le curseur).
+    // Moniteur Tauri sous le curseur. Ses position/taille sont en pixels physiques
+    // sur toutes les plateformes, comme `cursor_position()` — on reste donc dans un
+    // seul espace de coordonnées (évite le décalage Retina de `monitor_rect_at`).
     let cursor = app.cursor_position().map_err(|e| e.to_string())?;
     let (cx, cy) = (cursor.x as i32, cursor.y as i32);
-    let (monitor_rect, scale) = crate::capture::monitor_rect_at(cx, cy)?;
-    let win_px = (64.0 * scale as f64).round() as u32;
+    let monitors = app.available_monitors().map_err(|e| e.to_string())?;
+    if monitors.is_empty() {
+        return Err("Aucun moniteur disponible".to_string());
+    }
+    let idx = monitors
+        .iter()
+        .position(|m| {
+            let p = m.position();
+            let s = m.size();
+            cx >= p.x && cx < p.x + s.width as i32 && cy >= p.y && cy < p.y + s.height as i32
+        })
+        .unwrap_or(0);
+    let target = &monitors[idx];
+    let mp = target.position();
+    let ms = target.size();
+    let monitor_rect = crate::capture::MonitorRect {
+        x: mp.x,
+        y: mp.y,
+        width: ms.width,
+        height: ms.height,
+    };
+    let win_px = (64.0 * target.scale_factor()).round() as u32;
+
+    // Empêche deux décomptes simultanés (réinitialisé en fin de thread / sur erreur).
+    if DELAYED_RUNNING.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
 
     // Crée la fenêtre du compteur sur le thread principal.
     let app_main = app.clone();
-    app.run_on_main_thread(move || {
+    let main_thread_result = app.run_on_main_thread(move || {
         if let Some(w) = app_main.get_webview_window("countdown") {
             let _ = w.close();
         }
@@ -166,20 +196,33 @@ pub fn start_delayed_capture(app: AppHandle) -> Result<(), String> {
             }
             Err(e) => eprintln!("Création du compteur échouée: {e}"),
         }
-    })
-    .map_err(|e| e.to_string())?;
+    });
+    if let Err(e) = main_thread_result {
+        DELAYED_RUNNING.store(false, Ordering::SeqCst);
+        return Err(e.to_string());
+    }
 
     // Drapeau d'annulation + enregistrement du raccourci d'annulation temporaire.
     let cancelled = Arc::new(AtomicBool::new(false));
     {
         let flag = cancelled.clone();
-        app.global_shortcut()
-            .on_shortcut(cancel_shortcut.as_str(), move |_app, _sc, event| {
+        if let Err(e) = app.global_shortcut().on_shortcut(
+            cancel_shortcut.as_str(),
+            move |_app, _sc, event| {
                 if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
                     flag.store(true, Ordering::SeqCst);
                 }
-            })
-            .map_err(|e| format!("Échec d'enregistrement du raccourci d'annulation: {e}"))?;
+            },
+        ) {
+            DELAYED_RUNNING.store(false, Ordering::SeqCst);
+            let app_cleanup = app.clone();
+            let _ = app_cleanup.run_on_main_thread(move || {
+                if let Some(w) = app_cleanup.get_webview_window("countdown") {
+                    let _ = w.close();
+                }
+            });
+            return Err(format!("Échec d'enregistrement du raccourci d'annulation: {e}"));
+        }
     }
 
     // Boucle de décompte sur un thread dédié (ne bloque pas le thread principal).
@@ -234,6 +277,7 @@ pub fn start_delayed_capture(app: AppHandle) -> Result<(), String> {
                 eprintln!("Capture différée échouée: {e}");
             }
         }
+        DELAYED_RUNNING.store(false, Ordering::SeqCst);
     });
 
     Ok(())
