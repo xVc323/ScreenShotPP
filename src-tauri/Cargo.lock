@@ -4314,6 +4314,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "image",
+ "screenshotpp-core",
  "serde",
  "serde_json",
  "swift-rs",

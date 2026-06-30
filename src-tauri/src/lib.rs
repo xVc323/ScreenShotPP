@@ -3,7 +3,6 @@ mod capture;
 mod capture_win;
 mod clipboard;
 mod commands;
-mod countdown;
 mod hotkey;
 mod ocr;
 mod settings;

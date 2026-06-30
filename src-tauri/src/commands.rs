@@ -234,13 +234,13 @@ pub fn start_delayed_capture(app: AppHandle) -> Result<(), String> {
             if cancelled.load(Ordering::SeqCst) {
                 break;
             }
-            let remaining = crate::countdown::remaining_seconds(total_secs, elapsed);
+            let remaining = screenshotpp_core::countdown::remaining_seconds(total_secs, elapsed);
             if remaining == 0 {
                 break;
             }
             // Position de la fenêtre sous le curseur + chiffre courant.
             if let Ok(pos) = app_loop.cursor_position() {
-                let (px, py) = crate::countdown::window_origin(
+                let (px, py) = screenshotpp_core::countdown::window_origin(
                     (pos.x as i32, pos.y as i32),
                     (win_px, win_px),
                     monitor_rect,
