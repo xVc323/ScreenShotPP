@@ -406,7 +406,11 @@ pub fn update_settings(
     app: AppHandle,
     new_settings: crate::settings::Settings,
 ) -> Result<(), String> {
-    crate::hotkey::reregister(&app, &new_settings.capture_shortcut)?;
+    crate::hotkey::reregister_all(
+        &app,
+        &new_settings.capture_shortcut,
+        &new_settings.delayed_capture_shortcut,
+    )?;
     {
         use tauri_plugin_autostart::ManagerExt;
         let autolaunch = app.autolaunch();

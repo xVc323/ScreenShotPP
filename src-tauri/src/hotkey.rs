@@ -20,3 +20,31 @@ pub fn reregister(app: &AppHandle, accelerator: &str) -> Result<(), String> {
     let _ = app.global_shortcut().unregister_all();
     register_capture_shortcut(app, accelerator)
 }
+
+/// Enregistre le raccourci de capture différée ; à l'appui, lance le décompte.
+pub fn register_delayed_capture_shortcut(
+    app: &AppHandle,
+    accelerator: &str,
+) -> Result<(), String> {
+    let acc = accelerator.to_string();
+    app.global_shortcut()
+        .on_shortcut(accelerator, move |app, _shortcut, event| {
+            if event.state() == ShortcutState::Pressed {
+                if let Err(e) = crate::commands::start_delayed_capture(app.clone()) {
+                    eprintln!("Capture différée échouée: {e}");
+                }
+            }
+        })
+        .map_err(|e| format!("Échec d'enregistrement du raccourci différé {acc}: {e}"))
+}
+
+/// Désenregistre tout puis réenregistre les raccourcis instantané et différé.
+pub fn reregister_all(
+    app: &AppHandle,
+    capture_shortcut: &str,
+    delayed_shortcut: &str,
+) -> Result<(), String> {
+    let _ = app.global_shortcut().unregister_all();
+    register_capture_shortcut(app, capture_shortcut)?;
+    register_delayed_capture_shortcut(app, delayed_shortcut)
+}
