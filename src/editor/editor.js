@@ -41,13 +41,22 @@ export function createEditor(o = {}) {
   let hoverAutoSelection = null;
   let pendingAutoSelection = null;
 
+  // Rectangle d'affichage du fond (défaut : remplit le stage — comportement moniteur).
+  const backgroundRect = o.backgroundRect || { x: 0, y: 0, width, height };
+  // Échelle physique/CSS unique routée partout (fond, veil, mosaïque, export). En mode
+  // letterbox (backgroundRect fourni), on la dérive du bitmap source / largeur d'affichage
+  // pour exporter à la résolution native ; sinon on garde o.scale (chemin moniteur).
+  const scale = o.backgroundRect && o.image && o.image.naturalWidth
+    ? o.image.naturalWidth / backgroundRect.width
+    : positiveNumber(o.scale, 1);
+
   stage.add(backgroundLayer);
   stage.add(annotationLayer);
   stage.add(veilLayer);
   annotationLayer.add(shapeGroup);
   annotationLayer.add(transformer);
 
-  if (o.image) backgroundLayer.add(new Konva.Image({ image: o.image, x: 0, y: 0, width, height }));
+  if (o.image) backgroundLayer.add(new Konva.Image({ image: o.image, x: backgroundRect.x, y: backgroundRect.y, width: backgroundRect.width, height: backgroundRect.height }));
   backgroundLayer.draw();
   if (o.initialSelection) {
     lockSelection(o.initialSelection);
@@ -203,9 +212,8 @@ export function createEditor(o = {}) {
       return;
     }
     if (descriptor.type === "mosaic") {
-      const s = positiveNumber(o.scale, 1);
-      descriptor.cropX = descriptor.x * s;
-      descriptor.cropY = descriptor.y * s;
+      descriptor.cropX = descriptor.x * scale;
+      descriptor.cropY = descriptor.y * scale;
     }
     annotations.push(cloneDescriptor(descriptor));
     node.destroy();
@@ -282,7 +290,7 @@ export function createEditor(o = {}) {
         node = new Konva.Image({
           id: descriptor.id, x: descriptor.x, y: descriptor.y,
           width: descriptor.width, height: descriptor.height,
-          image: o.image, crop: mosaicCrop(descriptor, positiveNumber(o.scale, 1)),
+          image: o.image, crop: mosaicCrop(descriptor, scale),
           draggable: tool === "select",
           filters: [Konva.Filters.Pixelate], pixelSize: MOSAIC_PIXEL,
         });
@@ -652,7 +660,7 @@ export function createEditor(o = {}) {
       transformer.visible(false);
       veilLayer.visible(false);
       try {
-        return stage.toCanvas({ ...selection, pixelRatio: positiveNumber(o.scale, 1) }).toDataURL("image/png").replace(/^data:image\/png;base64,/, "");
+        return stage.toCanvas({ ...selection, pixelRatio: scale }).toDataURL("image/png").replace(/^data:image\/png;base64,/, "");
       } finally {
         transformer.visible(transformerVisible);
         veilLayer.visible(veilVisible);
@@ -662,12 +670,11 @@ export function createEditor(o = {}) {
     },
     selectionPhysicalRect() {
       if (!selection) return null;
-      const s = positiveNumber(o.scale, 1);
       return {
-        x: Math.round(selection.x * s),
-        y: Math.round(selection.y * s),
-        width: Math.round(selection.width * s),
-        height: Math.round(selection.height * s),
+        x: Math.round(selection.x * scale),
+        y: Math.round(selection.y * scale),
+        width: Math.round(selection.width * scale),
+        height: Math.round(selection.height * scale),
       };
     },
     hasSelection() { return selection !== null; },
