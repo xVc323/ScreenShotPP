@@ -64,8 +64,30 @@ fn begin_capture(app: AppHandle) -> Result<(), String> {
         width: monitor_rect.width,
         height: monitor_rect.height,
     };
-    let window_selections =
-        window_pick::foreground_window_selection(monitor_global_rect, monitor_scale as f64)
+    let candidate = window_pick::foreground_window_selection(monitor_global_rect, monitor_scale as f64);
+    // La fenêtre déborde si son rect GLOBAL non-rogné sort du moniteur. On NE compare
+    // PAS le rect relatif : il est par construction borné au moniteur et ne déborde
+    // jamais. `global_rect` et `monitor_global_rect` sont dans le même espace de
+    // coordonnées (pixels physiques sur Windows, points logiques sur macOS).
+    let window_overflows = candidate
+        .map(|c| {
+            screenshotpp_core::geometry::overflows(
+                capture::MonitorRect {
+                    x: c.global_rect.x,
+                    y: c.global_rect.y,
+                    width: c.global_rect.width,
+                    height: c.global_rect.height,
+                },
+                capture::MonitorRect {
+                    x: monitor_global_rect.x,
+                    y: monitor_global_rect.y,
+                    width: monitor_global_rect.width,
+                    height: monitor_global_rect.height,
+                },
+            )
+        })
+        .unwrap_or(false);
+    let window_selections = candidate
         .into_iter()
         .map(|candidate| WindowSelection {
             selection: rect_from_global(candidate.monitor_relative_rect),
@@ -75,22 +97,13 @@ fn begin_capture(app: AppHandle) -> Result<(), String> {
     let img = capture::capture_at(cx, cy)?;
     // Si la fenêtre au premier plan déborde du moniteur, on capture son bitmap
     // complet (partie hors-écran incluse) pour un rendu "fenêtre entière".
-    let window_capture = {
-        let win_overflows = window_selections.first().map(|w| {
-            let sel = w.selection; // rect on-écran (déjà relatif au moniteur)
-            // La fenêtre déborde si sa hauteur/largeur capturée est bornée par le
-            // moniteur : on compare via le rect global côté window_pick.
-            screenshotpp_core::geometry::overflows(
-                capture::MonitorRect { x: sel.x as i32, y: sel.y as i32, width: sel.width, height: sel.height },
-                capture::MonitorRect { x: 0, y: 0, width: img.width(), height: img.height() },
-            )
-        }).unwrap_or(false);
-        if win_overflows {
-            capture::capture_foreground_window().ok().flatten()
-                .map(|(image, rect)| WindowCapture { image, rect })
-        } else {
-            None
-        }
+    let window_capture = if window_overflows {
+        capture::capture_foreground_window()
+            .ok()
+            .flatten()
+            .map(|(image, rect)| WindowCapture { image, rect })
+    } else {
+        None
     };
     {
         let state = app.state::<CaptureState>();
