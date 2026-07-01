@@ -187,6 +187,7 @@ pub fn start_delayed_capture(app: AppHandle) -> Result<(), String> {
         .resizable(false)
         .visible(false)
         .transparent(true)
+        .shadow(false)
         .inner_size(64.0, 64.0);
         match builder.build() {
             Ok(w) => {
