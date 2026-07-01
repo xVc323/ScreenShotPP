@@ -58,6 +58,21 @@ pub fn monitor_rect_at(x: i32, y: i32) -> Result<(MonitorRect, f32), String> {
 /// Capture le moniteur contenant (x, y), ou le moniteur principal en repli.
 /// Sur Windows : via Windows Graphics Capture (WGC), fiable pour le contenu
 /// composé GPU (partage Teams) et les écrans secondaires / DPI mixtes.
+/// Capture le bitmap complet de la fenêtre au premier plan (partie hors-écran
+/// incluse), avec son rectangle en pixels physiques. `Ok(None)` si non supporté
+/// ou si la fenêtre n'est pas capturable — l'appelant retombe alors sur le
+/// comportement moniteur habituel. Implémentation réelle : Windows (capture_win),
+/// macOS (à venir). Défaut neutre pour les autres plateformes.
+#[cfg(not(any(windows, target_os = "macos")))]
+pub fn capture_foreground_window() -> Result<Option<(RgbaImage, Rect)>, String> {
+    Ok(None)
+}
+
+#[cfg(any(windows, target_os = "macos"))]
+pub fn capture_foreground_window() -> Result<Option<(RgbaImage, Rect)>, String> {
+    Ok(None)
+}
+
 #[cfg(windows)]
 pub fn capture_at(x: i32, y: i32) -> Result<RgbaImage, String> {
     crate::capture_win::capture_at_point(x, y)

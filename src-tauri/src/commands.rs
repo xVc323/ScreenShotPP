@@ -16,9 +16,21 @@ static DELAYED_RUNNING: AtomicBool = AtomicBool::new(false);
 #[derive(Default)]
 pub struct CaptureState(pub Mutex<Option<CaptureSession>>);
 
+pub struct WindowCapture {
+    pub image: RgbaImage,
+    pub rect: capture::Rect,
+}
+
 pub struct CaptureSession {
     pub image: RgbaImage,
     pub window_selections: Vec<WindowSelection>,
+    pub window_capture: Option<WindowCapture>,
+}
+
+#[derive(serde::Serialize)]
+pub struct WindowCaptureMeta {
+    pub width: u32,
+    pub height: u32,
 }
 
 #[derive(serde::Serialize)]
@@ -26,6 +38,7 @@ pub struct CaptureMetadata {
     pub image_width: u32,
     pub image_height: u32,
     pub window_selections: Vec<WindowSelection>,
+    pub window_capture: Option<WindowCaptureMeta>,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -60,11 +73,31 @@ fn begin_capture(app: AppHandle) -> Result<(), String> {
         })
         .collect();
     let img = capture::capture_at(cx, cy)?;
+    // Si la fenêtre au premier plan déborde du moniteur, on capture son bitmap
+    // complet (partie hors-écran incluse) pour un rendu "fenêtre entière".
+    let window_capture = {
+        let win_overflows = window_selections.first().map(|w| {
+            let sel = w.selection; // rect on-écran (déjà relatif au moniteur)
+            // La fenêtre déborde si sa hauteur/largeur capturée est bornée par le
+            // moniteur : on compare via le rect global côté window_pick.
+            screenshotpp_core::geometry::overflows(
+                capture::MonitorRect { x: sel.x as i32, y: sel.y as i32, width: sel.width, height: sel.height },
+                capture::MonitorRect { x: 0, y: 0, width: img.width(), height: img.height() },
+            )
+        }).unwrap_or(false);
+        if win_overflows {
+            capture::capture_foreground_window().ok().flatten()
+                .map(|(image, rect)| WindowCapture { image, rect })
+        } else {
+            None
+        }
+    };
     {
         let state = app.state::<CaptureState>();
         *state.0.lock().unwrap_or_else(|e| e.into_inner()) = Some(CaptureSession {
             image: img,
             window_selections,
+            window_capture,
         });
     }
     let app2 = app.clone();
@@ -307,6 +340,10 @@ pub fn get_capture_metadata(app: AppHandle) -> Result<CaptureMetadata, String> {
         image_width: session.image.width(),
         image_height: session.image.height(),
         window_selections: session.window_selections.clone(),
+        window_capture: session.window_capture.as_ref().map(|w| WindowCaptureMeta {
+            width: w.image.width(),
+            height: w.image.height(),
+        }),
     })
 }
 
