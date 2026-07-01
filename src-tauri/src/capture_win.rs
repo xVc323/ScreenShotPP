@@ -11,6 +11,7 @@ use windows_capture::capture::{Context, GraphicsCaptureApiHandler};
 use windows_capture::frame::Frame;
 use windows_capture::graphics_capture_api::InternalCaptureControl;
 use windows_capture::monitor::Monitor;
+use windows_capture::window::Window;
 use windows_capture::settings::{
     ColorFormat, CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings,
     MinimumUpdateIntervalSettings, SecondaryWindowSettings, Settings,
@@ -155,6 +156,47 @@ fn capture_at_point_inner(x: i32, y: i32) -> Result<RgbaImage, String> {
     OneShot::start(settings).map_err(|e| format!("Capture WGC échouée: {e}"))?;
 
     rx.recv().map_err(|_| "Aucune frame WGC reçue".to_string())?
+}
+
+/// Capture le bitmap complet de la fenêtre au premier plan via WGC (même pipeline
+/// que la capture moniteur, mais avec un item "fenêtre"). Renvoie l'image + son
+/// rectangle physique. `Ok(None)` si aucune fenêtre au premier plan exploitable.
+/// Exécuté sur un thread dédié (comme capture_at_point) pour isoler WGC.
+pub fn capture_foreground_window() -> Result<Option<(RgbaImage, crate::capture::Rect)>, String> {
+    let handle = std::thread::Builder::new()
+        .name("wgc-window-capture".into())
+        .spawn(|| {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(capture_foreground_window_inner))
+                .unwrap_or_else(|_| Err("Capture fenêtre WGC: panique interne".to_string()))
+        })
+        .map_err(|e| format!("Échec du thread de capture fenêtre WGC: {e}"))?;
+    handle.join().map_err(|_| "Le thread de capture fenêtre WGC a paniqué".to_string())?
+}
+
+fn capture_foreground_window_inner() -> Result<Option<(RgbaImage, crate::capture::Rect)>, String> {
+    let window = match Window::foreground() {
+        Ok(w) => w,
+        Err(_) => return Ok(None),
+    };
+    let rect = window.rect().map_err(|e| format!("window.rect a échoué: {e}"))?;
+    let (rx, ry) = (rect.left, rect.top);
+    let (rw, rh) = ((rect.right - rect.left).max(0) as u32, (rect.bottom - rect.top).max(0) as u32);
+
+    let (tx, rx_chan) = sync_channel::<Result<RgbaImage, String>>(1);
+    let settings = Settings::new(
+        window,
+        CursorCaptureSettings::WithoutCursor,
+        DrawBorderSettings::WithoutBorder,
+        SecondaryWindowSettings::Default,
+        MinimumUpdateIntervalSettings::Default,
+        DirtyRegionSettings::Default,
+        ColorFormat::Rgba8,
+        tx,
+    );
+    OneShot::start(settings).map_err(|e| format!("Capture fenêtre WGC échouée: {e}"))?;
+    let image = rx_chan.recv().map_err(|_| "Aucune frame fenêtre WGC reçue".to_string())??;
+    let rect = crate::capture::Rect { x: rx.max(0) as u32, y: ry.max(0) as u32, width: rw, height: rh };
+    Ok(Some((image, rect)))
 }
 
 #[cfg(test)]

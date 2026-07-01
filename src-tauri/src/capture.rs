@@ -68,9 +68,14 @@ pub fn capture_foreground_window() -> Result<Option<(RgbaImage, Rect)>, String> 
     Ok(None)
 }
 
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(target_os = "macos")]
 pub fn capture_foreground_window() -> Result<Option<(RgbaImage, Rect)>, String> {
     Ok(None)
+}
+
+#[cfg(windows)]
+pub fn capture_foreground_window() -> Result<Option<(RgbaImage, Rect)>, String> {
+    crate::capture_win::capture_foreground_window()
 }
 
 #[cfg(windows)]
