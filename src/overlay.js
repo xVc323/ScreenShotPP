@@ -111,8 +111,20 @@ redoButton.disabled = true;
       if (!(windowCapture.width > selPhysW || windowCapture.height > selPhysH)) return false;
 
       const winImg = await loadImage(base + "/window?t=" + Date.now());
-      const fit = fitScale([winImg.naturalWidth, winImg.naturalHeight], [window.innerWidth, window.innerHeight]);
-      const rect = { x: fit.x, y: fit.y, width: fit.width, height: fit.height };
+      // Loge la fenêtre dans ~90% du viewport pour laisser une marge autour, puis
+      // recentre dans le viewport complet (image centrée avec bordure de tous côtés,
+      // au lieu de toucher les bords sur un petit écran).
+      const MARGIN = 0.9;
+      const fit = fitScale(
+        [winImg.naturalWidth, winImg.naturalHeight],
+        [Math.round(window.innerWidth * MARGIN), Math.round(window.innerHeight * MARGIN)],
+      );
+      const rect = {
+        x: Math.round((window.innerWidth - fit.width) / 2),
+        y: Math.round((window.innerHeight - fit.height) / 2),
+        width: fit.width,
+        height: fit.height,
+      };
       switchedToWindow = true;
       editor?.destroy?.();
       editor = createEditor({
