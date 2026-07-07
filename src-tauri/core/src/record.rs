@@ -229,6 +229,37 @@ pub fn recording_badge_rgba(size: u32) -> Vec<u8> {
     px
 }
 
+/// Contenu du fichier-liste pour le démultiplexeur `concat` de ffmpeg, à partir
+/// des chemins de segments. Chaque ligne `file '<chemin>'` ; les apostrophes du
+/// chemin sont échappées selon la convention concat (`'` → `'\''`).
+pub fn concat_list_contents(paths: &[String]) -> String {
+    let mut out = String::new();
+    for p in paths {
+        let escaped = p.replace('\'', "'\\''");
+        out.push_str(&format!("file '{escaped}'\n"));
+    }
+    out
+}
+
+/// Args ffmpeg pour concaténer sans réencodage les segments d'un enregistrement
+/// (pause/reprise) via le démultiplexeur `concat` : `-c copy`, sortie faststart.
+pub fn concat_args(list_path: &str, out_path: &str) -> Vec<String> {
+    vec![
+        "-y".into(),
+        "-f".into(),
+        "concat".into(),
+        "-safe".into(),
+        "0".into(),
+        "-i".into(),
+        list_path.into(),
+        "-c".into(),
+        "copy".into(),
+        "-movflags".into(),
+        "+faststart".into(),
+        out_path.into(),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -239,6 +270,30 @@ mod tests {
         assert_eq!(even_dim(8), 8);
         assert_eq!(even_dim(1), 2);
         assert_eq!(even_dim(0), 2);
+    }
+
+    #[test]
+    fn concat_list_escapes_quotes_and_lists_each_file() {
+        let paths = vec![
+            "/tmp/rec/seg0.mp4".to_string(),
+            "/tmp/o'brien/seg1.mp4".to_string(),
+        ];
+        assert_eq!(
+            concat_list_contents(&paths),
+            "file '/tmp/rec/seg0.mp4'\nfile '/tmp/o'\\''brien/seg1.mp4'\n"
+        );
+    }
+
+    #[test]
+    fn concat_args_copy_without_reencode() {
+        let args = concat_args("list.txt", "out.mp4");
+        let joined = args.join(" ");
+        assert!(joined.contains("-f concat"));
+        assert!(joined.contains("-safe 0"));
+        assert!(joined.contains("-i list.txt"));
+        assert!(joined.contains("-c copy"));
+        assert!(joined.contains("+faststart"));
+        assert_eq!(args.last().unwrap(), "out.mp4");
     }
 
     #[test]
