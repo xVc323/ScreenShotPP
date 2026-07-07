@@ -21,10 +21,21 @@ pub struct WindowCapture {
     pub rect: capture::Rect,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum CaptureMode {
+    Image,
+    Video,
+}
+
 pub struct CaptureSession {
     pub image: RgbaImage,
     pub window_selections: Vec<WindowSelection>,
     pub window_capture: Option<WindowCapture>,
+    pub mode: CaptureMode,
+    /// Index du moniteur capturé dans `available_monitors()` + son origine
+    /// physique globale — nécessaires pour lancer ffmpeg sur la bonne sortie.
+    pub monitor_index: usize,
+    pub monitor_origin: (i32, i32),
 }
 
 #[derive(serde::Serialize)]
@@ -39,6 +50,7 @@ pub struct CaptureMetadata {
     pub image_height: u32,
     pub window_selections: Vec<WindowSelection>,
     pub window_capture: Option<WindowCaptureMeta>,
+    pub mode: String, // "image" | "video"
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -49,15 +61,50 @@ pub struct WindowSelection {
 
 /// Déclenché par le raccourci instantané : capture immédiate puis overlay.
 pub fn start_capture(app: AppHandle) -> Result<(), String> {
-    begin_capture(app)
+    begin_capture_mode(app, CaptureMode::Image)
+}
+
+/// Déclenché par le raccourci vidéo : même overlay de sélection, en mode vidéo.
+pub fn start_video_selection(app: AppHandle) -> Result<(), String> {
+    begin_capture_mode(app, CaptureMode::Video)
 }
 
 /// Corps partagé : lit le curseur, capture l'écran, stocke l'image, ouvre l'overlay.
 /// La création de la fenêtre est faite sur le thread principal (exigence macOS).
-fn begin_capture(app: AppHandle) -> Result<(), String> {
+fn begin_capture_mode(app: AppHandle, mode: CaptureMode) -> Result<(), String> {
     let cursor = app.cursor_position().map_err(|e| e.to_string())?;
     let (cx, cy) = (cursor.x as i32, cursor.y as i32);
     let (monitor_rect, monitor_scale) = capture::monitor_rect_at(cx, cy)?;
+    // Résolution du moniteur Tauri sous le curseur (index + origine physique globale),
+    // nécessaire pour épingler l'overlay ET pour cibler ffmpeg en mode vidéo. Fait ici,
+    // avant le stockage de la session, pour être réutilisé par le bloc main-thread.
+    let monitors_lookup = app.available_monitors().unwrap_or_default();
+    let rects_lookup: Vec<capture::MonitorRect> = monitors_lookup
+        .iter()
+        .map(|m| {
+            let p = m.position();
+            let s = m.size();
+            capture::MonitorRect {
+                x: p.x,
+                y: p.y,
+                width: s.width,
+                height: s.height,
+            }
+        })
+        .collect();
+    let target_index = capture::monitor_at(&rects_lookup, cx, cy).or(if monitors_lookup.is_empty() {
+        None
+    } else {
+        Some(0)
+    });
+    let monitor_index = target_index.unwrap_or(0);
+    let monitor_origin = target_index
+        .and_then(|i| monitors_lookup.get(i))
+        .map(|m| {
+            let p = m.position();
+            (p.x, p.y)
+        })
+        .unwrap_or((0, 0));
     let monitor_global_rect = window_pick::GlobalRect {
         x: monitor_rect.x,
         y: monitor_rect.y,
@@ -97,7 +144,9 @@ fn begin_capture(app: AppHandle) -> Result<(), String> {
     let img = capture::capture_at(cx, cy)?;
     // Si la fenêtre au premier plan déborde du moniteur, on capture son bitmap
     // complet (partie hors-écran incluse) pour un rendu "fenêtre entière".
-    let window_capture = if window_overflows {
+    // En mode vidéo, l'enregistrement cible toujours le rect relatif au moniteur :
+    // le bitmap gelé n'est qu'un fond de sélection, pas de bascule "fenêtre entière".
+    let window_capture = if window_overflows && mode == CaptureMode::Image {
         capture::capture_foreground_window()
             .ok()
             .flatten()
@@ -111,6 +160,9 @@ fn begin_capture(app: AppHandle) -> Result<(), String> {
             image: img,
             window_selections,
             window_capture,
+            mode,
+            monitor_index,
+            monitor_origin,
         });
     }
     let app2 = app.clone();
@@ -132,24 +184,6 @@ fn begin_capture(app: AppHandle) -> Result<(), String> {
         // Épingle l'overlay au moniteur Tauri sous le curseur (même écran que la capture),
         // pour que l'image affichée et la sélection partagent le même espace de coordonnées.
         let monitors = app2.available_monitors().unwrap_or_default();
-        let rects: Vec<capture::MonitorRect> = monitors
-            .iter()
-            .map(|m| {
-                let p = m.position();
-                let s = m.size();
-                capture::MonitorRect {
-                    x: p.x,
-                    y: p.y,
-                    width: s.width,
-                    height: s.height,
-                }
-            })
-            .collect();
-        let target_index = capture::monitor_at(&rects, cx, cy).or(if monitors.is_empty() {
-            None
-        } else {
-            Some(0)
-        });
         match target_index.and_then(|i| monitors.get(i)) {
             Some(monitor) => {
                 let pos = monitor.position();
@@ -323,7 +357,7 @@ pub fn start_delayed_capture(app: AppHandle) -> Result<(), String> {
         if !was_cancelled {
             // Petit répit pour laisser le compositor retirer la fenêtre du compteur.
             std::thread::sleep(Duration::from_millis(60));
-            if let Err(e) = begin_capture(app_loop.clone()) {
+            if let Err(e) = begin_capture_mode(app_loop.clone(), CaptureMode::Image) {
                 eprintln!("Capture différée échouée: {e}");
             }
         }
@@ -357,6 +391,10 @@ pub fn get_capture_metadata(app: AppHandle) -> Result<CaptureMetadata, String> {
             width: w.image.width(),
             height: w.image.height(),
         }),
+        mode: match session.mode {
+            CaptureMode::Image => "image".to_string(),
+            CaptureMode::Video => "video".to_string(),
+        },
     })
 }
 

@@ -5,6 +5,7 @@ mod clipboard;
 mod commands;
 mod hotkey;
 mod ocr;
+mod record;
 mod settings;
 mod storage;
 mod tray;
@@ -59,6 +60,7 @@ pub fn run() {
             }
         })
         .manage(CaptureState::default())
+        .manage(record::RecordingState::default())
         .invoke_handler(tauri::generate_handler![
             commands::get_capture_data_url,
             commands::get_capture_metadata,
@@ -73,6 +75,9 @@ pub fn run() {
             commands::default_save_path,
             commands::app_version,
             commands::show_overlay,
+            record::start_recording,
+            record::get_recording_info,
+            record::discard_recording,
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]

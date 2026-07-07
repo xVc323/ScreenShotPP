@@ -1,7 +1,7 @@
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    App, Manager,
+    App, AppHandle, Manager,
 };
 
 /// Construit l'icône de tray/menu bar avec un menu minimal (Quit).
@@ -27,3 +27,6 @@ pub fn build_tray(app: &App) -> tauri::Result<()> {
 
     Ok(())
 }
+
+/// Bascule la pastille "REC" du tray. Stub temporaire — implémenté en Task 5.
+pub fn set_recording(_app: &AppHandle, _on: bool) {}
