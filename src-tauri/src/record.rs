@@ -11,6 +11,18 @@ use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 pub struct RecordingState(pub Mutex<Inner>);
 
+/// Sur Windows, empêche l'ouverture d'une fenêtre de console (terminal noir)
+/// lors du spawn de ffmpeg via le flag CREATE_NO_WINDOW. No-op ailleurs.
+fn no_console(cmd: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 #[derive(Default)]
 pub struct Inner {
     pub child: Option<Child>,
@@ -105,7 +117,7 @@ pub fn start(app: &AppHandle, monitor_index: usize, region: core_record::Region)
         return Err("Enregistrement non pris en charge sur cette plateforme".into());
     };
 
-    let child = Command::new(&ffmpeg)
+    let child = no_console(&mut Command::new(&ffmpeg))
         .args(&args)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
@@ -273,7 +285,7 @@ pub async fn export_recording(app: AppHandle, options: ExportRequest) -> Result<
     let app2 = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         use std::io::{BufRead, BufReader};
-        let mut child = Command::new(&ffmpeg)
+        let mut child = no_console(&mut Command::new(&ffmpeg))
             .args(&args)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
