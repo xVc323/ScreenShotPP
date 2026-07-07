@@ -502,6 +502,7 @@ pub fn update_settings(
         &app,
         &new_settings.capture_shortcut,
         &new_settings.delayed_capture_shortcut,
+        &new_settings.record_shortcut,
     )?;
     {
         use tauri_plugin_autostart::ManagerExt;

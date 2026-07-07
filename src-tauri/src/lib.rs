@@ -93,6 +93,7 @@ pub fn run() {
                 app.handle(),
                 &settings.delayed_capture_shortcut,
             )?;
+            hotkey::register_record_shortcut(app.handle(), &settings.record_shortcut)?;
             {
                 use tauri_plugin_autostart::ManagerExt;
                 let autolaunch = app.autolaunch();
