@@ -41,6 +41,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
+      - name: Fetch ffmpeg sidecar
+        shell: bash
+        run: scripts/fetch-ffmpeg.sh ${{ runner.os == 'Windows' && 'windows' || 'macos-arm' }}
       - uses: dtolnay/rust-toolchain@stable
       - name: "Use D: drive for cargo (Windows)"
         if: runner.os == 'Windows'

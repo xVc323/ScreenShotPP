@@ -19,7 +19,11 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPDATA/recordings/**", "$APPDATA/recordings/*"]
+      }
     }
   },
   "plugins": {
@@ -33,6 +37,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": ["binaries/ffmpeg"],
     "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
