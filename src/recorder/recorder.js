@@ -35,7 +35,9 @@ let crop = null; // rect en espace d'affichage du <video>, null = pas de crop
     renderCrop();
   });
   await listen("export-progress", (e) => {
-    const total = Number(trimEnd.value) - Number(trimStart.value);
+    // Le backend émet le timestamp de SORTIE ffmpeg, comprimé par setpts=PTS/speed.
+    // On borne donc sur la durée effective (durée source / vitesse), pas la source.
+    const total = effectiveDuration(Number(trimStart.value), Number(trimEnd.value), Number(speedSel.value));
     progress.value = total > 0 ? Math.min(1, e.payload / total) : 0;
   });
 })();
