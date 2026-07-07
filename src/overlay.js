@@ -1,4 +1,5 @@
 import { createEditor } from "./editor/editor.js";
+import { fitScale } from "./editor/fit.js";
 import { createColorPicker } from "./color-picker.js";
 import { isEditableTarget, shouldCloseOcrPanel } from "./editable-target.js";
 
@@ -83,20 +84,84 @@ redoButton.disabled = true;
       loupe.hidden = false;
     };
 
+    // Bitmap complet de la fenêtre au premier plan si elle déborde du moniteur
+    // (Task 2-5) : {width,height} en pixels physiques, ou null.
+    const windowCapture = metadata.window_capture || null;
+    // La première entrée window_selections correspond à la fenêtre au premier plan
+    // (potentiellement débordante) — c'est la seule qui peut déclencher le mode "fenêtre entière".
+    const overflowAuto = autoSelections[0] || null;
+    let switchedToWindow = false;
+
+    const onHistoryChange = ({ canUndo, canRedo }) => {
+      undoButton.disabled = !canUndo;
+      redoButton.disabled = !canRedo;
+    };
+
+    // Bascule vers le rendu "fenêtre entière" letterboxée quand l'utilisateur
+    // auto-sélectionne la fenêtre débordante : on charge son bitmap complet, on le
+    // loge dans le viewport et on pré-sélectionne la fenêtre entière.
+    async function maybeSwitchToWindow(selection) {
+      if (switchedToWindow || !windowCapture || !overflowAuto) return false;
+      // La sélection validée doit être celle de la fenêtre débordante (1re auto-sélection).
+      if (!rectsMatch(selection, overflowAuto.selection)) return false;
+      // Garde : ne basculer que s'il y a réellement plus de fenêtre à montrer que la
+      // portion visible à l'écran (une fenêtre maximisée ≈ moniteur ne bascule PAS).
+      const selPhysW = selection.width * scale;
+      const selPhysH = selection.height * scale;
+      if (!(windowCapture.width > selPhysW || windowCapture.height > selPhysH)) return false;
+
+      const winImg = await loadImage(base + "/window?t=" + Date.now());
+      // Loge la fenêtre dans ~90% du viewport pour laisser une marge autour, puis
+      // recentre dans le viewport complet (image centrée avec bordure de tous côtés,
+      // au lieu de toucher les bords sur un petit écran).
+      const MARGIN = 0.9;
+      const fit = fitScale(
+        [winImg.naturalWidth, winImg.naturalHeight],
+        [Math.round(window.innerWidth * MARGIN), Math.round(window.innerHeight * MARGIN)],
+      );
+      const rect = {
+        x: Math.round((window.innerWidth - fit.width) / 2),
+        y: Math.round((window.innerHeight - fit.height) / 2),
+        width: fit.width,
+        height: fit.height,
+      };
+      switchedToWindow = true;
+      editor?.destroy?.();
+      editor = createEditor({
+        container: "stage",
+        image: winImg,
+        backgroundRect: rect,
+        initialSelection: rect,
+        color: activeColor(),
+        strokeWidth: parseInt(thickness.value, 10),
+        fontSize: parseInt(fontsize.value, 10),
+        onSelectMove: ({ point, rect: r }) => updateLoupe(point, r),
+        onSelectionDone: (sel) => { hideLoupe(); positionAndShowToolbar(sel); },
+        onHistoryChange,
+      });
+      setActiveTool("select");
+      hideLoupe();
+      positionAndShowToolbar(rect);
+      return true;
+    }
+
     editor = createEditor({
       container: "stage",
       image,
       scale,
-      color: document.querySelector(".swatch.active").dataset.color,
+      color: activeColor(),
       strokeWidth: parseInt(thickness.value, 10),
       fontSize: parseInt(fontsize.value, 10),
       autoSelections,
       onSelectMove: ({ point, rect }) => updateLoupe(point, rect),
-      onSelectionDone: (selection) => { hideLoupe(); positionAndShowToolbar(selection); },
-      onHistoryChange: ({ canUndo, canRedo }) => {
-        undoButton.disabled = !canUndo;
-        redoButton.disabled = !canRedo;
+      onSelectionDone: (selection) => {
+        maybeSwitchToWindow(selection).then((switched) => {
+          if (switched) return;
+          hideLoupe();
+          positionAndShowToolbar(selection);
+        });
       },
+      onHistoryChange,
     });
     setActiveTool("select");
     // La capture est déjà dessinée sur le canvas (draw() Konva synchrone) ; on affiche
@@ -122,6 +187,22 @@ function loadImage(src) {
     image.onerror = () => reject(new Error("Capture image failed to load"));
     image.src = src;
   });
+}
+
+// Couleur active courante : swatch sélectionné, sinon couleur personnalisée.
+function activeColor() {
+  const swatch = document.querySelector(".swatch.active");
+  if (swatch) return swatch.dataset.color;
+  return localStorage.getItem("customColor") || "#ff8800";
+}
+
+// Deux rects (coordonnées CSS) sont « le même » à 1px près (tolérance d'arrondi/clamp).
+function rectsMatch(a, b) {
+  if (!a || !b) return false;
+  return Math.abs(a.x - b.x) <= 1
+    && Math.abs(a.y - b.y) <= 1
+    && Math.abs(a.width - b.width) <= 1
+    && Math.abs(a.height - b.height) <= 1;
 }
 
 function rectToCss(rect, scale) {

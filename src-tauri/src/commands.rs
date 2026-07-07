@@ -16,9 +16,21 @@ static DELAYED_RUNNING: AtomicBool = AtomicBool::new(false);
 #[derive(Default)]
 pub struct CaptureState(pub Mutex<Option<CaptureSession>>);
 
+pub struct WindowCapture {
+    pub image: RgbaImage,
+    pub rect: capture::Rect,
+}
+
 pub struct CaptureSession {
     pub image: RgbaImage,
     pub window_selections: Vec<WindowSelection>,
+    pub window_capture: Option<WindowCapture>,
+}
+
+#[derive(serde::Serialize)]
+pub struct WindowCaptureMeta {
+    pub width: u32,
+    pub height: u32,
 }
 
 #[derive(serde::Serialize)]
@@ -26,6 +38,7 @@ pub struct CaptureMetadata {
     pub image_width: u32,
     pub image_height: u32,
     pub window_selections: Vec<WindowSelection>,
+    pub window_capture: Option<WindowCaptureMeta>,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -51,8 +64,30 @@ fn begin_capture(app: AppHandle) -> Result<(), String> {
         width: monitor_rect.width,
         height: monitor_rect.height,
     };
-    let window_selections =
-        window_pick::foreground_window_selection(monitor_global_rect, monitor_scale as f64)
+    let candidate = window_pick::foreground_window_selection(monitor_global_rect, monitor_scale as f64);
+    // La fenêtre déborde si son rect GLOBAL non-rogné sort du moniteur. On NE compare
+    // PAS le rect relatif : il est par construction borné au moniteur et ne déborde
+    // jamais. `global_rect` et `monitor_global_rect` sont dans le même espace de
+    // coordonnées (pixels physiques sur Windows, points logiques sur macOS).
+    let window_overflows = candidate
+        .map(|c| {
+            screenshotpp_core::geometry::overflows(
+                capture::MonitorRect {
+                    x: c.global_rect.x,
+                    y: c.global_rect.y,
+                    width: c.global_rect.width,
+                    height: c.global_rect.height,
+                },
+                capture::MonitorRect {
+                    x: monitor_global_rect.x,
+                    y: monitor_global_rect.y,
+                    width: monitor_global_rect.width,
+                    height: monitor_global_rect.height,
+                },
+            )
+        })
+        .unwrap_or(false);
+    let window_selections = candidate
         .into_iter()
         .map(|candidate| WindowSelection {
             selection: rect_from_global(candidate.monitor_relative_rect),
@@ -60,11 +95,22 @@ fn begin_capture(app: AppHandle) -> Result<(), String> {
         })
         .collect();
     let img = capture::capture_at(cx, cy)?;
+    // Si la fenêtre au premier plan déborde du moniteur, on capture son bitmap
+    // complet (partie hors-écran incluse) pour un rendu "fenêtre entière".
+    let window_capture = if window_overflows {
+        capture::capture_foreground_window()
+            .ok()
+            .flatten()
+            .map(|(image, rect)| WindowCapture { image, rect })
+    } else {
+        None
+    };
     {
         let state = app.state::<CaptureState>();
         *state.0.lock().unwrap_or_else(|e| e.into_inner()) = Some(CaptureSession {
             image: img,
             window_selections,
+            window_capture,
         });
     }
     let app2 = app.clone();
@@ -307,6 +353,10 @@ pub fn get_capture_metadata(app: AppHandle) -> Result<CaptureMetadata, String> {
         image_width: session.image.width(),
         image_height: session.image.height(),
         window_selections: session.window_selections.clone(),
+        window_capture: session.window_capture.as_ref().map(|w| WindowCaptureMeta {
+            width: w.image.width(),
+            height: w.image.height(),
+        }),
     })
 }
 

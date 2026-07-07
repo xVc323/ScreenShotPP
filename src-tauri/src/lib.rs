@@ -26,13 +26,19 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
-        .register_uri_scheme_protocol("capture", |ctx, _request| {
+        .register_uri_scheme_protocol("capture", |ctx, request| {
             let app = ctx.app_handle();
             let state = app.state::<CaptureState>();
             let guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
-            match guard.as_ref() {
-                Some(session) => {
-                    let encoded = storage::encode_bmp_fast(&session.image);
+            let want_window = request.uri().path().ends_with("/window");
+            let img = if want_window {
+                guard.as_ref().and_then(|s| s.window_capture.as_ref().map(|w| &w.image))
+            } else {
+                guard.as_ref().map(|s| &s.image)
+            };
+            match img {
+                Some(image) => {
+                    let encoded = storage::encode_bmp_fast(image);
                     match encoded {
                         Ok(bmp) => tauri::http::Response::builder()
                             .header("Content-Type", "image/bmp")

@@ -58,6 +58,91 @@ pub fn monitor_rect_at(x: i32, y: i32) -> Result<(MonitorRect, f32), String> {
 /// Capture le moniteur contenant (x, y), ou le moniteur principal en repli.
 /// Sur Windows : via Windows Graphics Capture (WGC), fiable pour le contenu
 /// composé GPU (partage Teams) et les écrans secondaires / DPI mixtes.
+/// Capture le bitmap complet de la fenêtre au premier plan (partie hors-écran
+/// incluse), avec son rectangle en pixels physiques. `Ok(None)` si non supporté
+/// ou si la fenêtre n'est pas capturable — l'appelant retombe alors sur le
+/// comportement moniteur habituel. Implémentation réelle : Windows (capture_win),
+/// macOS (CGWindowListCreateImage). Défaut neutre pour les autres plateformes.
+#[cfg(not(any(windows, target_os = "macos")))]
+pub fn capture_foreground_window() -> Result<Option<(RgbaImage, Rect)>, String> {
+    Ok(None)
+}
+
+#[cfg(target_os = "macos")]
+mod mac {
+    use swift_rs::{swift, SRData, SRString};
+    // Capture la fenêtre au premier plan (partie hors-écran incluse) et renvoie les
+    // octets PNG. Renvoie SRData vide sur tout échec.
+    swift!(pub(super) fn capture_foreground_window_png() -> SRData);
+    // Renvoie les bounds de la fenêtre au premier plan en points logiques, sans
+    // filtrage par moniteur. Utilisé pour l'origine globale dans capture_foreground_window.
+    swift!(pub(super) fn foreground_window_bounds_unfiltered_json() -> SRString);
+}
+
+#[cfg(target_os = "macos")]
+#[derive(serde::Deserialize)]
+struct MacWindowBounds {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+}
+
+/// macOS : capture la fenêtre au premier plan dans son intégralité via
+/// CGWindowListCreateImage (partie hors-écran incluse).
+/// Renvoie `Ok(None)` sur tout échec — l'appelant retombe sur la capture moniteur.
+#[cfg(target_os = "macos")]
+pub fn capture_foreground_window() -> Result<Option<(RgbaImage, Rect)>, String> {
+    // 1. Demande à Swift de capturer la fenêtre en PNG complet.
+    let png_data = unsafe { mac::capture_foreground_window_png() };
+    if png_data.is_empty() {
+        return Ok(None);
+    }
+
+    // 2. Décode le PNG → RgbaImage (dimensions = pixels physiques Retina).
+    let image = match crate::storage::decode_png_to_rgba(&png_data) {
+        Ok(img) => img,
+        Err(_) => return Ok(None),
+    };
+
+    // 3. Récupère la position de la fenêtre en points logiques (CGWindowList).
+    let bounds_json = unsafe { mac::foreground_window_bounds_unfiltered_json() };
+    let bounds: Option<MacWindowBounds> =
+        serde_json::from_str(&bounds_json.to_string()).ok();
+
+    // 4. Convertit l'origine en pixels physiques via le scale du moniteur au
+    //    centre de la fenêtre. La taille provient des dimensions de l'image capturée
+    //    (déjà en pixels physiques) pour éviter tout décalage d'arrondi Retina.
+    let rect = if let Some(b) = bounds {
+        let cx = b.x.saturating_add((b.width / 2) as i32);
+        let cy = b.y.saturating_add((b.height / 2) as i32);
+        let scale = monitor_rect_at(cx, cy)
+            .map(|(_, s)| s as f64)
+            .unwrap_or(1.0);
+        Rect {
+            x: (b.x.max(0) as f64 * scale).round() as u32,
+            y: (b.y.max(0) as f64 * scale).round() as u32,
+            width: image.width(),
+            height: image.height(),
+        }
+    } else {
+        // Origine inconnue : repli sans positionnement global.
+        Rect {
+            x: 0,
+            y: 0,
+            width: image.width(),
+            height: image.height(),
+        }
+    };
+
+    Ok(Some((image, rect)))
+}
+
+#[cfg(windows)]
+pub fn capture_foreground_window() -> Result<Option<(RgbaImage, Rect)>, String> {
+    crate::capture_win::capture_foreground_window()
+}
+
 #[cfg(windows)]
 pub fn capture_at(x: i32, y: i32) -> Result<RgbaImage, String> {
     crate::capture_win::capture_at_point(x, y)
