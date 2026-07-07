@@ -17,9 +17,17 @@
         </div>
       </div>
       <section id="timeline">
-        <label>Start <input id="trim-start" type="range" min="0" value="0" step="0.1" /></label>
-        <label>End <input id="trim-end" type="range" min="0" value="0" step="0.1" /></label>
-        <span id="trim-label"></span>
+        <div id="track">
+          <div id="range"></div>
+          <div id="playhead"></div>
+          <div id="h-start" class="bracket" title="Trim start"><b></b></div>
+          <div id="h-end" class="bracket" title="Trim end"><b></b></div>
+        </div>
+        <div id="time-row">
+          <span id="t-start">0:00</span>
+          <span id="t-dur">0:00</span>
+          <span id="t-end">0:00</span>
+        </div>
       </section>
       <section id="controls">
         <button id="crop-toggle">Crop</button>

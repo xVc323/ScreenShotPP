@@ -81,26 +81,79 @@ main {
 
 #timeline {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 6px;
 }
 
-#timeline label {
+/* Piste de montage : region conservée surlignée entre deux crochets draggables,
+   plus une tête de lecture. */
+#track {
+  position: relative;
+  height: 46px;
+  background: #2c2c2e;
+  border-radius: 8px;
+  border: 1px solid #3a3a3c;
+  touch-action: none;
+  cursor: pointer;
+}
+
+#range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(10, 132, 255, 0.28);
+  border-left: 2px solid #0a84ff;
+  border-right: 2px solid #0a84ff;
+  pointer-events: none;
+}
+
+#playhead {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: #fff;
+  border-radius: 2px;
+  pointer-events: none;
+  transform: translateX(-1px);
+}
+
+.bracket {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 16px;
+  margin-left: -8px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex: 1 1 240px;
+  justify-content: center;
+  cursor: ew-resize;
+  touch-action: none;
 }
 
-#timeline input[type="range"] {
-  flex: 1 1 auto;
+.bracket b {
+  display: block;
+  width: 6px;
+  height: 60%;
+  background: #0a84ff;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
-#trim-label {
-  min-width: 3em;
-  text-align: right;
+.bracket:hover b {
+  background: #3a9bff;
+}
+
+#time-row {
+  display: flex;
+  justify-content: space-between;
   font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: #b0b0b3;
+}
+
+#t-dur {
+  color: #f0f0f0;
 }
 
 #controls {

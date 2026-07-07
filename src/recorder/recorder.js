@@ -1,6 +1,6 @@
 // Mini-éditeur d'enregistrement (côté webview) : lecture du fichier temporaire,
-// poignées de trim, boîte de crop draggable/redimensionnable, export MP4/GIF.
-// La logique pure (trim/crop) vit dans trim.js / crop.js (testés sous node).
+// timeline avec crochets de trim draggables, boîte de crop redimensionnable,
+// export MP4/GIF. La logique pure (trim/crop) vit dans trim.js / crop.js.
 import { clampTrim, effectiveDuration } from "./trim.js";
 import { clampCrop, displayToVideo } from "./crop.js";
 
@@ -9,16 +9,31 @@ const { listen } = window.__TAURI__.event;
 const { save } = window.__TAURI__.dialog;
 
 const player = document.getElementById("player");
-const trimStart = document.getElementById("trim-start");
-const trimEnd = document.getElementById("trim-end");
+const track = document.getElementById("track");
+const rangeEl = document.getElementById("range");
+const playhead = document.getElementById("playhead");
+const hStart = document.getElementById("h-start");
+const hEnd = document.getElementById("h-end");
+const tStartEl = document.getElementById("t-start");
+const tEndEl = document.getElementById("t-end");
+const tDurEl = document.getElementById("t-dur");
 const speedSel = document.getElementById("speed");
 const progress = document.getElementById("export-progress");
-const trimLabel = document.getElementById("trim-label");
 const cropBox = document.getElementById("crop-box");
 const cropToggle = document.getElementById("crop-toggle");
 
 let sourcePath = null;
 let crop = null; // rect en espace d'affichage du <video>, null = pas de crop
+let duration = 0;
+let startT = 0;
+let endT = 0;
+
+function fmt(t) {
+  const s = Math.max(0, Math.floor(t));
+  const mm = Math.floor(s / 60);
+  const ss = String(s % 60).padStart(2, "0");
+  return `${mm}:${ss}`;
+}
 
 (async function init() {
   try {
@@ -29,43 +44,92 @@ let crop = null; // rect en espace d'affichage du <video>, null = pas de crop
     return;
   }
   player.addEventListener("loadedmetadata", () => {
-    trimStart.max = trimEnd.max = String(player.duration);
-    trimEnd.value = String(player.duration);
-    updateLabel();
+    duration = player.duration || 0;
+    startT = 0;
+    endT = duration;
+    renderTimeline();
     renderCrop();
   });
   await listen("export-progress", (e) => {
     // Le backend émet le timestamp de SORTIE ffmpeg, comprimé par setpts=PTS/speed.
     // On borne donc sur la durée effective (durée source / vitesse), pas la source.
-    const total = effectiveDuration(Number(trimStart.value), Number(trimEnd.value), Number(speedSel.value));
+    const total = effectiveDuration(startT, endT, Number(speedSel.value));
     progress.value = total > 0 ? Math.min(1, e.payload / total) : 0;
   });
 })();
 
-// ---- Trim -----------------------------------------------------------------
+// ---- Timeline / trim ------------------------------------------------------
 
-function currentTrim() {
-  const t = clampTrim(Number(trimStart.value), Number(trimEnd.value), player.duration || 0);
-  trimStart.value = String(t.start);
-  trimEnd.value = String(t.end);
-  return t;
+function pct(t) {
+  return duration > 0 ? (t / duration) * 100 : 0;
 }
 
-function updateLabel() {
-  const t = currentTrim();
-  const d = effectiveDuration(t.start, t.end, Number(speedSel.value));
-  trimLabel.textContent = `${d.toFixed(1)}s`;
+function renderTimeline() {
+  hStart.style.left = `${pct(startT)}%`;
+  hEnd.style.left = `${pct(endT)}%`;
+  rangeEl.style.left = `${pct(startT)}%`;
+  rangeEl.style.width = `${pct(endT - startT)}%`;
+  const cur = Math.min(Math.max(player.currentTime || 0, startT), endT);
+  playhead.style.left = `${pct(cur)}%`;
+  tStartEl.textContent = fmt(startT);
+  tEndEl.textContent = fmt(endT);
+  tDurEl.textContent = `${effectiveDuration(startT, endT, Number(speedSel.value)).toFixed(1)}s`;
 }
 
-trimStart.addEventListener("input", () => {
-  updateLabel();
-  player.currentTime = Number(trimStart.value);
+function timeAtClientX(clientX) {
+  const r = track.getBoundingClientRect();
+  const ratio = r.width > 0 ? (clientX - r.left) / r.width : 0;
+  return Math.min(Math.max(ratio, 0), 1) * duration;
+}
+
+function applyTrim(rawStart, rawEnd) {
+  const t = clampTrim(rawStart, rawEnd, duration);
+  startT = t.start;
+  endT = t.end;
+  renderTimeline();
+}
+
+function startBracketDrag(handle, isStart) {
+  handle.addEventListener("pointerdown", (event) => {
+    handle.setPointerCapture(event.pointerId);
+    event.preventDefault();
+    event.stopPropagation();
+    const move = (e) => {
+      const t = timeAtClientX(e.clientX);
+      if (isStart) applyTrim(t, endT);
+      else applyTrim(startT, t);
+      player.currentTime = isStart ? startT : endT;
+    };
+    const up = (e) => {
+      handle.releasePointerCapture(event.pointerId);
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+  });
+}
+startBracketDrag(hStart, true);
+startBracketDrag(hEnd, false);
+
+// Clic sur la piste (hors crochets) : déplace la tête de lecture / preview.
+track.addEventListener("pointerdown", (event) => {
+  if (event.target.closest(".bracket")) return;
+  player.currentTime = Math.min(Math.max(timeAtClientX(event.clientX), startT), endT);
 });
-trimEnd.addEventListener("input", () => {
-  updateLabel();
-  player.currentTime = Number(trimEnd.value);
+
+// La lecture reste bornée à la zone conservée [startT, endT].
+player.addEventListener("timeupdate", () => {
+  if (player.currentTime > endT) {
+    player.pause();
+    player.currentTime = endT;
+  } else if (player.currentTime < startT) {
+    player.currentTime = startT;
+  }
+  renderTimeline();
 });
-speedSel.addEventListener("change", updateLabel);
+
+speedSel.addEventListener("change", renderTimeline);
 
 // ---- Crop -----------------------------------------------------------------
 // `crop` est en pixels d'affichage du <video> (0..clientWidth/Height). À
@@ -184,7 +248,6 @@ window.addEventListener("resize", renderCrop);
 // ---- Export ---------------------------------------------------------------
 
 async function doExport(gif) {
-  const t = currentTrim();
   const suggested = sourcePath.replace(/\.mp4$/, gif ? ".gif" : "-edited.mp4");
   const outputPath = await save({ defaultPath: suggested });
   if (!outputPath) return;
@@ -196,8 +259,8 @@ async function doExport(gif) {
   try {
     await invoke("export_recording", {
       options: {
-        trimStart: t.start,
-        trimEnd: t.end,
+        trimStart: startT,
+        trimEnd: endT,
         crop: cropVideo,
         speed: Number(speedSel.value),
         gif,
