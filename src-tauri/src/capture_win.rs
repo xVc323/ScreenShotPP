@@ -110,11 +110,12 @@ fn run_isolated<T: Send + 'static>(
     thread_name: &str,
     f: impl FnOnce() -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {
+    let thread_name_owned = thread_name.to_string();
     let handle = std::thread::Builder::new()
         .name(thread_name.to_string())
         .spawn(move || {
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
-                .unwrap_or_else(|_| Err(format!("{thread_name}: panique interne")))
+                .unwrap_or_else(|_| Err(format!("{thread_name_owned}: panique interne")))
         })
         .map_err(|e| format!("Échec du lancement du thread {thread_name}: {e}"))?;
     handle
