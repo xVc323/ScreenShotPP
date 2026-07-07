@@ -10,9 +10,11 @@ Sorted by priority / effort. Each item keeps its open technical question where o
       FFI boundary, aborting the process. Fixed by running WGC capture on a dedicated
       thread, with `catch_unwind` turning any residual panic into an `Err`
       (`capture_win.rs`).
-  - [ ] Remaining: a regression test for the dedicated-thread / panic-isolation
-        path. The pure `frame_to_rgba` part is unit-tested; the thread + panic
-        behavior is OS integration and hard to cover reliably.
+  - [x] Regression test for the dedicated-thread / panic-isolation path — the
+        duplicated thread-spawn + `catch_unwind` logic in `capture_at_point` and
+        `capture_foreground_window` was extracted into one helper, `run_isolated`,
+        directly unit-tested with panicking/Ok/Err stub closures (no real WGC
+        session needed). CI-verified on `windows-latest`.
 - [ ] **Sign the Windows binary** (SignPath Foundation application)
       Removes the SmartScreen warning and unblocks real-world adoption.
       Note: the existing `windows-x86_64` signature in the release workflow is the
@@ -29,10 +31,15 @@ Sorted by priority / effort. Each item keeps its open technical question where o
       in v0.3.1: fixed a global-shortcut re-entrancy freeze, a missing countdown
       window capability (number stuck at 3), and a stray window shadow.
 
-- [ ] **Capture a window that extends beyond the monitor bounds**
-      Impl: capture the active window via `xcap::Window` instead of cropping the
-      monitor, so the off-screen part is included.
-      Open question: multi-monitor + mixed-DPI behavior for this mode.
+- [x] **Capture a window that extends beyond the monitor bounds** — implemented on
+      `feature/window-overflow-capture`, tagged `v0.4.0-rc.2`; not yet merged to
+      `master`.
+      Impl ended up native-API-based rather than `xcap::Window`: WGC `OneShot` on
+      Windows (`capture_win.rs`), `CGWindowList` on macOS, overflow detected via the
+      unclipped global window rect, editor gets a letterboxed background + re-init
+      on overflow-window select.
+      Remaining before merge: real-device Windows/macOS QA (multi-monitor,
+      mixed-DPI) — flagged as deferred in code review, not yet exercised outside CI.
 
 - [ ] **Video / short GIF recording**
       Large feature (competes with ShareX / CleanShot).
