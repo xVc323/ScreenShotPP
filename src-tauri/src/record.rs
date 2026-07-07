@@ -235,3 +235,80 @@ pub fn discard_recording(app: AppHandle) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportRequest {
+    pub trim_start: f64,
+    pub trim_end: f64,
+    pub crop: Option<core_record::Region>,
+    pub speed: f64,
+    pub gif: bool,
+    pub output_path: String,
+}
+
+/// Exporte le dernier enregistrement selon les options du mini-éditeur.
+/// Bloquant côté worker (spawn_blocking) ; la progression est émise à la
+/// fenêtre recorder via l'événement "export-progress" (secondes traitées).
+#[tauri::command]
+pub async fn export_recording(app: AppHandle, options: ExportRequest) -> Result<(), String> {
+    use tauri::Emitter;
+    let input = app
+        .state::<RecordingState>()
+        .0
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .last_file
+        .clone()
+        .ok_or("Aucun enregistrement disponible")?;
+    let ffmpeg = resolve_ffmpeg()?;
+    let core_opts = core_record::ExportOptions {
+        trim_start: options.trim_start,
+        trim_end: options.trim_end,
+        crop: options.crop,
+        speed: options.speed,
+        gif: options.gif,
+    };
+    let args = core_record::export_args(&input.to_string_lossy(), &core_opts, &options.output_path);
+    let app2 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::io::{BufRead, BufReader};
+        let mut child = Command::new(&ffmpeg)
+            .args(&args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Lancement de l'export ffmpeg échoué: {e}"))?;
+        if let Some(stderr) = child.stderr.take() {
+            // ffmpeg écrit la progression avec des \r ; on lit donc par blocs CR.
+            let reader = BufReader::new(stderr);
+            for chunk in reader.split(b'\r') {
+                let Ok(bytes) = chunk else { break };
+                let line = String::from_utf8_lossy(&bytes);
+                if let Some(secs) = core_record::parse_ffmpeg_time(&line) {
+                    let _ = app2.emit_to("recorder", "export-progress", secs);
+                }
+            }
+        }
+        let status = child.wait().map_err(|e| e.to_string())?;
+        if !status.success() {
+            return Err(format!("Export ffmpeg terminé en erreur ({status})"));
+        }
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    // Export réussi : le temporaire ne sert plus.
+    let file = app
+        .state::<RecordingState>()
+        .0
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .last_file
+        .take();
+    if let Some(f) = file {
+        let _ = std::fs::remove_file(f);
+    }
+    Ok(())
+}

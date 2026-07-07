@@ -78,6 +78,7 @@ pub fn run() {
             record::start_recording,
             record::get_recording_info,
             record::discard_recording,
+            record::export_recording,
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
