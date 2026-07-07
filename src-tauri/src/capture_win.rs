@@ -102,6 +102,26 @@ impl GraphicsCaptureApiHandler for OneShot {
     }
 }
 
+/// Exécute `f` sur un thread dédié, nommé `thread_name`, avec un panic
+/// capturé et converti en `Err` plutôt que de traverser la frontière FFI
+/// (voir le commentaire de `capture_at_point` : c'est ce qui causait le
+/// 0xc0000409). Utilisé par toutes les captures WGC (moniteur et fenêtre).
+fn run_isolated<T: Send + 'static>(
+    thread_name: &str,
+    f: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    let handle = std::thread::Builder::new()
+        .name(thread_name.to_string())
+        .spawn(move || {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
+                .unwrap_or_else(|_| Err(format!("{thread_name}: panique interne")))
+        })
+        .map_err(|e| format!("Échec du lancement du thread {thread_name}: {e}"))?;
+    handle
+        .join()
+        .map_err(|_| format!("Le thread {thread_name} a paniqué"))?
+}
+
 /// Capture le moniteur contenant le point physique (x, y) via WGC et renvoie son
 /// image en RGBA. Repli sur le moniteur principal si le point n'est sur aucun
 /// moniteur.
@@ -114,20 +134,7 @@ impl GraphicsCaptureApiHandler for OneShot {
 /// Un thread frais résout le conflit ; `catch_unwind` garantit qu'un panic résiduel
 /// devient une `Err` au lieu de fermer l'application.
 pub fn capture_at_point(x: i32, y: i32) -> Result<RgbaImage, String> {
-    let handle = std::thread::Builder::new()
-        .name("wgc-capture".into())
-        .spawn(move || {
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                capture_at_point_inner(x, y)
-            }))
-            .unwrap_or_else(|_| {
-                Err("Capture WGC: panique interne (WGC indisponible sur ce poste ?)".to_string())
-            })
-        })
-        .map_err(|e| format!("Échec du lancement du thread de capture WGC: {e}"))?;
-    handle
-        .join()
-        .map_err(|_| "Le thread de capture WGC a paniqué".to_string())?
+    run_isolated("wgc-capture", move || capture_at_point_inner(x, y))
 }
 
 /// Corps de la capture WGC, exécuté sur le thread dédié de `capture_at_point`.
@@ -163,14 +170,7 @@ fn capture_at_point_inner(x: i32, y: i32) -> Result<RgbaImage, String> {
 /// rectangle physique. `Ok(None)` si aucune fenêtre au premier plan exploitable.
 /// Exécuté sur un thread dédié (comme capture_at_point) pour isoler WGC.
 pub fn capture_foreground_window() -> Result<Option<(RgbaImage, crate::capture::Rect)>, String> {
-    let handle = std::thread::Builder::new()
-        .name("wgc-window-capture".into())
-        .spawn(|| {
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(capture_foreground_window_inner))
-                .unwrap_or_else(|_| Err("Capture fenêtre WGC: panique interne".to_string()))
-        })
-        .map_err(|e| format!("Échec du thread de capture fenêtre WGC: {e}"))?;
-    handle.join().map_err(|_| "Le thread de capture fenêtre WGC a paniqué".to_string())?
+    run_isolated("wgc-window-capture", capture_foreground_window_inner)
 }
 
 fn capture_foreground_window_inner() -> Result<Option<(RgbaImage, crate::capture::Rect)>, String> {
@@ -239,5 +239,36 @@ mod tests {
     fn rejects_buffer_too_small() {
         let buffer = vec![0u8; 4]; // bien trop petit pour 2x2
         assert!(frame_to_rgba(&buffer, 2, 2, 8).is_err());
+    }
+
+    #[test]
+    fn run_isolated_converts_string_panic_to_err() {
+        let result: Result<i32, String> =
+            run_isolated("test-panic-string", || -> Result<i32, String> {
+                panic!("boom");
+            });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn run_isolated_converts_non_string_panic_to_err() {
+        let result: Result<i32, String> =
+            run_isolated("test-panic-nonstring", || -> Result<i32, String> {
+                std::panic::panic_any(42i32);
+            });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn run_isolated_passes_through_ok() {
+        let result = run_isolated("test-ok", || -> Result<i32, String> { Ok(7) });
+        assert_eq!(result, Ok(7));
+    }
+
+    #[test]
+    fn run_isolated_passes_through_err() {
+        let result: Result<i32, String> =
+            run_isolated("test-err", || Err("échec attendu".to_string()));
+        assert_eq!(result, Err("échec attendu".to_string()));
     }
 }
