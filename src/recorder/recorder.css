@@ -1,0 +1,143 @@
+/* Mini-éditeur d'enregistrement : fond sombre, police système, mise en page
+   simple (scène letterboxée + timeline + contrôles). */
+:root {
+  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  color: #f0f0f0;
+  background-color: #1c1c1e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  gap: 12px;
+  padding: 12px;
+}
+
+#stage {
+  position: relative;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  background: #0a0a0a;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+#player {
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+}
+
+#crop-box {
+  position: absolute;
+  border: 1px dashed #fff;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: move;
+  touch-action: none;
+}
+
+#crop-box .handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border: 1px solid #333;
+  touch-action: none;
+}
+
+#crop-box .handle.nw {
+  left: -5px;
+  top: -5px;
+  cursor: nw-resize;
+}
+#crop-box .handle.ne {
+  right: -5px;
+  top: -5px;
+  cursor: ne-resize;
+}
+#crop-box .handle.sw {
+  left: -5px;
+  bottom: -5px;
+  cursor: sw-resize;
+}
+#crop-box .handle.se {
+  right: -5px;
+  bottom: -5px;
+  cursor: se-resize;
+}
+
+#timeline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+#timeline label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 240px;
+}
+
+#timeline input[type="range"] {
+  flex: 1 1 auto;
+}
+
+#trim-label {
+  min-width: 3em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+#controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+#controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+button,
+select {
+  font: inherit;
+  color: #f0f0f0;
+  background: #2c2c2e;
+  border: 1px solid #3a3a3c;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+button:hover,
+select:hover {
+  background: #3a3a3c;
+}
+
+button.active {
+  background: #0a84ff;
+  border-color: #0a84ff;
+}
+
+#export-progress {
+  flex: 1 1 120px;
+  height: 10px;
+}

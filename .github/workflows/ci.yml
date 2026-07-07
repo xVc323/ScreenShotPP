@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: 22
       - name: Tests frontend (logique pure)
-        run: node --test src/accelerator.test.js src/editable-target.test.js src/editor/history.test.js src/editor/color.test.js src/editor/bubbles.test.js src/editor/editor.test.js src/editor/mosaic.test.js
+        run: node --test src/accelerator.test.js src/editable-target.test.js src/editor/history.test.js src/editor/color.test.js src/editor/bubbles.test.js src/editor/editor.test.js src/editor/mosaic.test.js src/recorder/trim.test.js src/recorder/crop.test.js
       - name: Release storefront readiness
         shell: bash
         run: scripts/check-release-readiness.sh

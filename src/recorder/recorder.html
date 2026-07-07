@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Recording</title>
+    <link rel="stylesheet" href="recorder.css" />
+  </head>
+  <body>
+    <main>
+      <div id="stage">
+        <video id="player" controls></video>
+        <div id="crop-box" hidden>
+          <div class="handle nw"></div>
+          <div class="handle ne"></div>
+          <div class="handle sw"></div>
+          <div class="handle se"></div>
+        </div>
+      </div>
+      <section id="timeline">
+        <label>Start <input id="trim-start" type="range" min="0" value="0" step="0.1" /></label>
+        <label>End <input id="trim-end" type="range" min="0" value="0" step="0.1" /></label>
+        <span id="trim-label"></span>
+      </section>
+      <section id="controls">
+        <button id="crop-toggle">Crop</button>
+        <label
+          >Speed
+          <select id="speed">
+            <option value="1">1×</option>
+            <option value="2">2×</option>
+            <option value="4">4×</option>
+          </select>
+        </label>
+        <button id="export-mp4">Save MP4…</button>
+        <button id="export-gif">Save GIF…</button>
+        <button id="discard">Discard</button>
+        <progress id="export-progress" max="1" value="0" hidden></progress>
+      </section>
+    </main>
+    <script type="module" src="recorder.js"></script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "recorder",
+  "description": "Capability for the recorder mini-editor window (video trim/crop/speed export)",
+  "windows": ["recorder"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "dialog:allow-save"
+  ]
+}
