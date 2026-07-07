@@ -344,7 +344,10 @@ fn open_hud(app: &AppHandle, monitor_index: usize, region: core_record::Region) 
         let (mon_x, mon_y) = (pos.x as f64 / sf, pos.y as f64 / sf);
         let (mon_w, mon_h) = (size.width as f64 / sf, size.height as f64 / sf);
 
-        // Liseré : fenêtre plein moniteur, transparente, click-through.
+        // Liseré : fenêtre plein moniteur, transparente, click-through. On la
+        // construit INVISIBLE, on active le click-through, PUIS on l'affiche —
+        // sinon une fenêtre plein écran topmost capte tous les clics avant que
+        // le click-through ne soit posé → l'app paraît figée.
         if let Some(w) = app2.get_webview_window("rec-border") {
             let _ = w.close();
         }
@@ -360,6 +363,7 @@ fn open_hud(app: &AppHandle, monitor_index: usize, region: core_record::Region) 
         .focused(false)
         .focusable(false)
         .resizable(false)
+        .visible(false)
         .transparent(true)
         .shadow(false)
         .inner_size(mon_w, mon_h)
@@ -367,6 +371,7 @@ fn open_hud(app: &AppHandle, monitor_index: usize, region: core_record::Region) 
         match border.build() {
             Ok(w) => {
                 let _ = w.set_ignore_cursor_events(true);
+                let _ = w.show();
             }
             Err(e) => eprintln!("Création du liseré d'enregistrement échouée: {e}"),
         }
@@ -403,12 +408,16 @@ fn open_hud(app: &AppHandle, monitor_index: usize, region: core_record::Region) 
         .skip_taskbar(true)
         .focused(false)
         .resizable(false)
+        .visible(false)
         .transparent(true)
         .shadow(false)
         .inner_size(bar_w, bar_h)
         .position(mon_x + cx_local, mon_y + cy_local);
-        if let Err(e) = ctrl.build() {
-            eprintln!("Création de la barre d'enregistrement échouée: {e}");
+        match ctrl.build() {
+            Ok(w) => {
+                let _ = w.show();
+            }
+            Err(e) => eprintln!("Création de la barre d'enregistrement échouée: {e}"),
         }
     });
 }
@@ -460,18 +469,25 @@ pub fn start_recording(app: AppHandle, rect: core_record::Region) -> Result<(), 
         }
         session.monitor_index
     };
-    // Ferme l'overlay AVANT de démarrer (il ne doit pas apparaître dans la vidéo).
-    let app_close = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        if let Some(w) = app_close.get_webview_window("overlay") {
-            let _ = w.close();
+    // Tout le travail lourd (fermeture overlay, spawn ffmpeg, création des
+    // fenêtres HUD) est déporté hors du thread principal — comme la capture
+    // différée — pour ne jamais figer l'UI.
+    std::thread::spawn(move || {
+        let app_close = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            if let Some(w) = app_close.get_webview_window("overlay") {
+                let _ = w.close();
+            }
+        });
+        // Laisse le compositor retirer l'overlay (même délai que la capture différée).
+        std::thread::sleep(std::time::Duration::from_millis(120));
+        if let Err(e) = start(&app, monitor_index, rect) {
+            eprintln!("Démarrage d'enregistrement échoué: {e}");
+            return;
         }
+        open_hud(&app, monitor_index, rect);
+        crate::tray::set_recording(&app, true);
     });
-    // Laisse le compositor retirer l'overlay (même délai que la capture différée).
-    std::thread::sleep(std::time::Duration::from_millis(120));
-    start(&app, monitor_index, rect)?;
-    open_hud(&app, monitor_index, rect);
-    crate::tray::set_recording(&app, true);
     Ok(())
 }
 
