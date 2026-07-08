@@ -20,6 +20,7 @@ const delayedShortcutBtn = document.getElementById("delayed-shortcut");
 const captureDelayEl = document.getElementById("capture-delay");
 const cancelShortcutBtn = document.getElementById("cancel-shortcut");
 const recordShortcutBtn = document.getElementById("record-shortcut");
+const recordDelayEl = document.getElementById("record-delay");
 const recordCursorCheckbox = document.getElementById("record-cursor");
 const recordFpsSel = document.getElementById("record-fps");
 
@@ -33,6 +34,7 @@ function render() {
   captureDelayEl.value = settings.capture_delay_secs;
   cancelShortcutBtn.textContent = settings.cancel_shortcut;
   recordShortcutBtn.textContent = settings.record_shortcut;
+  recordDelayEl.value = settings.record_delay_secs ?? 0;
   recordCursorCheckbox.checked = !!settings.record_cursor;
   recordFpsSel.value = String(settings.record_fps);
   folderEl.textContent = settings.default_save_folder || "Desktop";
@@ -120,6 +122,13 @@ launchAtLogin.addEventListener("change", async () => {
 captureDelayEl.addEventListener("change", async () => {
   const secs = Math.min(60, Math.max(1, parseInt(captureDelayEl.value, 10) || 3));
   settings = { ...settings, capture_delay_secs: secs };
+  render();
+  await persist();
+});
+
+recordDelayEl.addEventListener("change", async () => {
+  const secs = Math.min(60, Math.max(0, parseInt(recordDelayEl.value, 10) || 0));
+  settings = { ...settings, record_delay_secs: secs };
   render();
   await persist();
 });

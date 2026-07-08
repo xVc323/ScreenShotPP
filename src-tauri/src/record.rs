@@ -6,6 +6,7 @@ use screenshotpp_core::record as core_record;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
@@ -45,6 +46,8 @@ pub struct Inner {
     pub session: Option<RecordSession>,
     /// Dernier fichier finalisé, servi au mini-éditeur.
     pub last_file: Option<PathBuf>,
+    pub export_child: Option<Arc<Mutex<Child>>>,
+    pub exported_files: Vec<PathBuf>,
 }
 
 impl Default for RecordingState {
@@ -69,7 +72,11 @@ pub fn is_recording(app: &AppHandle) -> bool {
 fn resolve_ffmpeg() -> Result<PathBuf, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let dir = exe.parent().ok_or("Exécutable sans dossier parent")?;
-    let name = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+    let name = if cfg!(windows) {
+        "ffmpeg.exe"
+    } else {
+        "ffmpeg"
+    };
     let path = dir.join(name);
     if path.exists() {
         Ok(path)
@@ -96,7 +103,15 @@ pub fn recordings_dir(app: &AppHandle) -> Result<PathBuf, String> {
 #[cfg(target_os = "macos")]
 fn avfoundation_device_for_screen(ffmpeg: &PathBuf, screen_no: u32) -> Result<u32, String> {
     let out = Command::new(ffmpeg)
-        .args(["-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""])
+        .args([
+            "-hide_banner",
+            "-f",
+            "avfoundation",
+            "-list_devices",
+            "true",
+            "-i",
+            "",
+        ])
         .output()
         .map_err(|e| format!("Énumération avfoundation échouée: {e}"))?;
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -175,7 +190,11 @@ fn finalize_child(mut child: Child) {
 
 /// Démarre l'enregistrement de la région (pixels, relative au moniteur capturé) :
 /// crée la session et lance le premier segment ffmpeg.
-pub fn start(app: &AppHandle, monitor_index: usize, region: core_record::Region) -> Result<(), String> {
+pub fn start(
+    app: &AppHandle,
+    monitor_index: usize,
+    region: core_record::Region,
+) -> Result<(), String> {
     let (fps, cursor) = {
         let st = app.state::<crate::settings::SettingsState>();
         let s = st.0.lock().unwrap_or_else(|e| e.into_inner());
@@ -503,10 +522,16 @@ pub fn resume_recording(app: AppHandle) -> Result<(), String> {
     resume(&app)
 }
 
-/// Arrête l'enregistrement (bouton du HUD).
+/// Arrête l'enregistrement (bouton du HUD). Le finalize ffmpeg, la concaténation
+/// et l'ouverture du mini-éditeur sont déportés hors du thread principal.
 #[tauri::command]
 pub fn stop_recording(app: AppHandle) -> Result<(), String> {
-    stop(&app)
+    std::thread::spawn(move || {
+        if let Err(e) = stop(&app) {
+            eprintln!("Arrêt d'enregistrement échoué: {e}");
+        }
+    });
+    Ok(())
 }
 
 /// Rectangle de la région en points logiques, relatif au moniteur, pour que le
@@ -524,7 +549,10 @@ pub fn recording_hud_info(app: AppHandle) -> Result<HudInfo, String> {
     let (monitor_index, region) = {
         let st = app.state::<RecordingState>();
         let inner = st.0.lock().unwrap_or_else(|e| e.into_inner());
-        let s = inner.session.as_ref().ok_or("Aucun enregistrement en cours")?;
+        let s = inner
+            .session
+            .as_ref()
+            .ok_or("Aucun enregistrement en cours")?;
         (s.monitor_index, s.region)
     };
     let monitors = app.available_monitors().map_err(|e| e.to_string())?;
@@ -569,6 +597,21 @@ pub fn discard_recording(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+fn normalized_existing_path(path: &PathBuf) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.clone())
+}
+
+#[tauri::command]
+pub fn close_recorder(app: AppHandle) -> Result<(), String> {
+    let app2 = app.clone();
+    app.run_on_main_thread(move || {
+        if let Some(w) = app2.get_webview_window("recorder") {
+            let _ = w.close();
+        }
+    })
+    .map_err(|e| e.to_string())
+}
+
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportRequest {
@@ -577,6 +620,7 @@ pub struct ExportRequest {
     pub crop: Option<core_record::Region>,
     pub speed: f64,
     pub gif: bool,
+    pub preset: String,
     pub output_path: String,
 }
 
@@ -601,19 +645,30 @@ pub async fn export_recording(app: AppHandle, options: ExportRequest) -> Result<
         crop: options.crop,
         speed: options.speed,
         gif: options.gif,
+        preset: core_record::ExportPreset::from_str(&options.preset, options.gif),
     };
+    let output_path = PathBuf::from(&options.output_path);
+    let output_path_for_state = output_path.clone();
     let args = core_record::export_args(&input.to_string_lossy(), &core_opts, &options.output_path);
     let app2 = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         use std::io::{BufRead, BufReader};
-        let mut child = no_console(&mut Command::new(&ffmpeg))
+        let child = no_console(&mut Command::new(&ffmpeg))
             .args(&args)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| format!("Lancement de l'export ffmpeg échoué: {e}"))?;
+        let export_child = Arc::new(Mutex::new(child));
+        {
+            let st = app2.state::<RecordingState>();
+            st.0.lock().unwrap_or_else(|e| e.into_inner()).export_child =
+                Some(export_child.clone());
+        }
+        let mut child = export_child.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(stderr) = child.stderr.take() {
+            drop(child);
             // ffmpeg écrit la progression avec des \r ; on lit donc par blocs CR.
             let reader = BufReader::new(stderr);
             for chunk in reader.split(b'\r') {
@@ -623,25 +678,91 @@ pub async fn export_recording(app: AppHandle, options: ExportRequest) -> Result<
                     let _ = app2.emit_to("recorder", "export-progress", secs);
                 }
             }
+            child = export_child.lock().unwrap_or_else(|e| e.into_inner());
         }
-        let status = child.wait().map_err(|e| e.to_string())?;
-        if !status.success() {
-            return Err(format!("Export ffmpeg terminé en erreur ({status})"));
+        let status = child.wait().map_err(|e| e.to_string());
+        drop(child);
+        {
+            let st = app2.state::<RecordingState>();
+            st.0.lock().unwrap_or_else(|e| e.into_inner()).export_child = None;
         }
-        Ok::<(), String>(())
+        match status {
+            Ok(status) if status.success() => Ok::<(), String>(()),
+            Ok(status) => {
+                let _ = std::fs::remove_file(&output_path);
+                Err(format!("Export ffmpeg terminé en erreur ({status})"))
+            }
+            Err(e) => {
+                let _ = std::fs::remove_file(&output_path);
+                Err(e)
+            }
+        }
     })
     .await
     .map_err(|e| e.to_string())??;
-    // Export réussi : le temporaire ne sert plus.
-    let file = app
+    // On garde le temporaire comme source de travail : l'utilisateur peut exporter
+    // en GIF, ajuster le trim/crop/vitesse, puis exporter à nouveau en MP4.
+    // Le bouton Discard reste le chemin explicite pour supprimer ce fichier.
+    {
+        let exported = normalized_existing_path(&output_path_for_state);
+        let st = app.state::<RecordingState>();
+        let mut inner = st.0.lock().unwrap_or_else(|e| e.into_inner());
+        if !inner.exported_files.iter().any(|p| p == &exported) {
+            inner.exported_files.push(exported);
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn cancel_export(app: AppHandle) -> Result<(), String> {
+    let child = app
         .state::<RecordingState>()
         .0
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .last_file
-        .take();
-    if let Some(f) = file {
-        let _ = std::fs::remove_file(f);
+        .export_child
+        .clone();
+    if let Some(child) = child {
+        let _ = child.lock().unwrap_or_else(|e| e.into_inner()).kill();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_recording_export(app: AppHandle, path: String) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .unwrap_or_default();
+    if ext != "mp4" && ext != "gif" {
+        return Err("Unsupported export type".into());
+    }
+    let target = normalized_existing_path(&path);
+    let idx = {
+        let st = app.state::<RecordingState>();
+        let inner = st.0.lock().unwrap_or_else(|e| e.into_inner());
+        inner
+            .exported_files
+            .iter()
+            .position(|p| normalized_existing_path(p) == target)
+            .ok_or("Unknown recording export")?
+    };
+    if path.exists() {
+        std::fs::remove_file(&target).map_err(|e| e.to_string())?;
+    }
+    let st = app.state::<RecordingState>();
+    let mut inner = st.0.lock().unwrap_or_else(|e| e.into_inner());
+    if idx < inner.exported_files.len()
+        && normalized_existing_path(&inner.exported_files[idx]) == target
+    {
+        inner.exported_files.remove(idx);
+    } else {
+        inner
+            .exported_files
+            .retain(|p| normalized_existing_path(p) != target);
     }
     Ok(())
 }

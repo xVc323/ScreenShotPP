@@ -5,7 +5,7 @@ pub struct Settings {
     pub capture_shortcut: String,
     pub default_save_folder: String,
     pub default_format: String, // "png" | "jpeg"
-    pub ocr_language: String,    // "auto" | code langue
+    pub ocr_language: String,   // "auto" | code langue
     #[serde(default)]
     pub launch_at_login: bool, // lancer l'app à l'ouverture de session
     #[serde(default = "default_delayed_capture_shortcut")]
@@ -16,6 +16,8 @@ pub struct Settings {
     pub cancel_shortcut: String, // raccourci d'annulation pendant le décompte
     #[serde(default = "default_record_shortcut")]
     pub record_shortcut: String, // raccourci d'enregistrement vidéo
+    #[serde(default = "default_record_delay_secs")]
+    pub record_delay_secs: u32, // délai avant sélection vidéo, 0 = instantané
     #[serde(default = "default_record_cursor")]
     pub record_cursor: bool, // inclure le curseur dans la vidéo
     #[serde(default = "default_record_fps")]
@@ -33,6 +35,9 @@ fn default_cancel_shortcut() -> String {
 }
 fn default_record_shortcut() -> String {
     "CmdOrCtrl+Shift+5".to_string()
+}
+fn default_record_delay_secs() -> u32 {
+    0
 }
 fn default_record_cursor() -> bool {
     true
@@ -53,6 +58,7 @@ impl Default for Settings {
             capture_delay_secs: default_capture_delay_secs(),
             cancel_shortcut: default_cancel_shortcut(),
             record_shortcut: default_record_shortcut(),
+            record_delay_secs: default_record_delay_secs(),
             record_cursor: default_record_cursor(),
             record_fps: default_record_fps(),
         }
@@ -142,6 +148,7 @@ mod tests {
     fn default_settings_have_record_values() {
         let s = Settings::default();
         assert_eq!(s.record_shortcut, "CmdOrCtrl+Shift+5");
+        assert_eq!(s.record_delay_secs, 0);
         assert!(s.record_cursor);
         assert_eq!(s.record_fps, 30);
     }
@@ -157,6 +164,7 @@ mod tests {
         }"#;
         let s: Settings = serde_json::from_str(json).unwrap();
         assert_eq!(s.record_shortcut, "CmdOrCtrl+Shift+5");
+        assert_eq!(s.record_delay_secs, 0);
         assert!(s.record_cursor);
         assert_eq!(s.record_fps, 30);
     }

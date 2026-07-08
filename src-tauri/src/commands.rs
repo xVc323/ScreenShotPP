@@ -66,7 +66,16 @@ pub fn start_capture(app: AppHandle) -> Result<(), String> {
 
 /// Déclenché par le raccourci vidéo : même overlay de sélection, en mode vidéo.
 pub fn start_video_selection(app: AppHandle) -> Result<(), String> {
-    begin_capture_mode(app, CaptureMode::Video)
+    let delay_secs = {
+        let state = app.state::<crate::settings::SettingsState>();
+        let s = state.0.lock().unwrap_or_else(|e| e.into_inner());
+        s.record_delay_secs.min(60)
+    };
+    if delay_secs == 0 {
+        begin_capture_mode(app, CaptureMode::Video)
+    } else {
+        start_delayed_capture_mode(app, CaptureMode::Video, delay_secs)
+    }
 }
 
 /// Corps partagé : lit le curseur, capture l'écran, stocke l'image, ouvre l'overlay.
@@ -92,11 +101,12 @@ fn begin_capture_mode(app: AppHandle, mode: CaptureMode) -> Result<(), String> {
             }
         })
         .collect();
-    let target_index = capture::monitor_at(&rects_lookup, cx, cy).or(if monitors_lookup.is_empty() {
-        None
-    } else {
-        Some(0)
-    });
+    let target_index =
+        capture::monitor_at(&rects_lookup, cx, cy).or(if monitors_lookup.is_empty() {
+            None
+        } else {
+            Some(0)
+        });
     let monitor_index = target_index.unwrap_or(0);
     let monitor_origin = target_index
         .and_then(|i| monitors_lookup.get(i))
@@ -111,7 +121,8 @@ fn begin_capture_mode(app: AppHandle, mode: CaptureMode) -> Result<(), String> {
         width: monitor_rect.width,
         height: monitor_rect.height,
     };
-    let candidate = window_pick::foreground_window_selection(monitor_global_rect, monitor_scale as f64);
+    let candidate =
+        window_pick::foreground_window_selection(monitor_global_rect, monitor_scale as f64);
     // La fenêtre déborde si son rect GLOBAL non-rogné sort du moniteur. On NE compare
     // PAS le rect relatif : il est par construction borné au moniteur et ne déborde
     // jamais. `global_rect` et `monitor_global_rect` sont dans le même espace de
@@ -213,7 +224,28 @@ pub fn start_delayed_capture(app: AppHandle) -> Result<(), String> {
         let s = state.0.lock().unwrap_or_else(|e| e.into_inner());
         (s.capture_delay_secs.max(1), s.cancel_shortcut.clone())
     };
+    start_delayed_capture_mode_with_cancel(app, CaptureMode::Image, total_secs, cancel_shortcut)
+}
 
+fn start_delayed_capture_mode(
+    app: AppHandle,
+    mode: CaptureMode,
+    total_secs: u32,
+) -> Result<(), String> {
+    let cancel_shortcut = {
+        let state = app.state::<crate::settings::SettingsState>();
+        let s = state.0.lock().unwrap_or_else(|e| e.into_inner());
+        s.cancel_shortcut.clone()
+    };
+    start_delayed_capture_mode_with_cancel(app, mode, total_secs.max(1), cancel_shortcut)
+}
+
+fn start_delayed_capture_mode_with_cancel(
+    app: AppHandle,
+    mode: CaptureMode,
+    total_secs: u32,
+    cancel_shortcut: String,
+) -> Result<(), String> {
     // Moniteur Tauri sous le curseur. Ses position/taille sont en pixels physiques
     // sur toutes les plateformes, comme `cursor_position()` — on reste donc dans un
     // seul espace de coordonnées (évite le décalage Retina de `monitor_rect_at`).
@@ -285,14 +317,14 @@ pub fn start_delayed_capture(app: AppHandle) -> Result<(), String> {
     let cancelled = Arc::new(AtomicBool::new(false));
     {
         let flag = cancelled.clone();
-        if let Err(e) = app.global_shortcut().on_shortcut(
-            cancel_shortcut.as_str(),
-            move |_app, _sc, event| {
-                if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                    flag.store(true, Ordering::SeqCst);
-                }
-            },
-        ) {
+        if let Err(e) =
+            app.global_shortcut()
+                .on_shortcut(cancel_shortcut.as_str(), move |_app, _sc, event| {
+                    if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        flag.store(true, Ordering::SeqCst);
+                    }
+                })
+        {
             DELAYED_RUNNING.store(false, Ordering::SeqCst);
             let app_cleanup = app.clone();
             let _ = app.run_on_main_thread(move || {
@@ -300,7 +332,9 @@ pub fn start_delayed_capture(app: AppHandle) -> Result<(), String> {
                     let _ = w.close();
                 }
             });
-            return Err(format!("Échec d'enregistrement du raccourci d'annulation: {e}"));
+            return Err(format!(
+                "Échec d'enregistrement du raccourci d'annulation: {e}"
+            ));
         }
     }
 
@@ -357,8 +391,8 @@ pub fn start_delayed_capture(app: AppHandle) -> Result<(), String> {
         if !was_cancelled {
             // Petit répit pour laisser le compositor retirer la fenêtre du compteur.
             std::thread::sleep(Duration::from_millis(60));
-            if let Err(e) = begin_capture_mode(app_loop.clone(), CaptureMode::Image) {
-                eprintln!("Capture différée échouée: {e}");
+            if let Err(e) = begin_capture_mode(app_loop.clone(), mode) {
+                eprintln!("Démarrage différé échoué: {e}");
             }
         }
         DELAYED_RUNNING.store(false, Ordering::SeqCst);

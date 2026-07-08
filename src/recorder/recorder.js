@@ -6,7 +6,8 @@ import { clampCrop, displayToVideo } from "./crop.js";
 
 const { invoke, convertFileSrc } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
-const { save } = window.__TAURI__.dialog;
+const { save, confirm } = window.__TAURI__.dialog;
+const { openPath, revealItemInDir } = window.__TAURI__.opener;
 
 const player = document.getElementById("player");
 const track = document.getElementById("track");
@@ -17,16 +18,38 @@ const hEnd = document.getElementById("h-end");
 const tStartEl = document.getElementById("t-start");
 const tEndEl = document.getElementById("t-end");
 const tDurEl = document.getElementById("t-dur");
+const trimStartInput = document.getElementById("trim-start");
+const trimEndInput = document.getElementById("trim-end");
+const cropMeta = document.getElementById("crop-meta");
 const speedSel = document.getElementById("speed");
+const exportPresetSel = document.getElementById("export-preset");
+const progressRow = document.getElementById("progress-row");
 const progress = document.getElementById("export-progress");
+const progressLabel = document.getElementById("export-progress-label");
 const cropBox = document.getElementById("crop-box");
 const cropToggle = document.getElementById("crop-toggle");
+const resetCropBtn = document.getElementById("reset-crop");
+const markStartBtn = document.getElementById("mark-start");
+const markEndBtn = document.getElementById("mark-end");
+const resetTrimBtn = document.getElementById("reset-trim");
+const statusEl = document.getElementById("status");
+const exportMp4Btn = document.getElementById("export-mp4");
+const exportGifBtn = document.getElementById("export-gif");
+const cancelExportBtn = document.getElementById("cancel-export");
+const discardBtn = document.getElementById("discard");
+const exportsPanel = document.getElementById("exports");
+const exportsList = document.getElementById("exports-list");
+const exportsCount = document.getElementById("exports-count");
+const toasts = document.getElementById("toasts");
 
 let sourcePath = null;
 let crop = null; // rect en espace d'affichage du <video>, null = pas de crop
 let duration = 0;
 let startT = 0;
 let endT = 0;
+let exporting = false;
+let cancelRequested = false;
+let exports = [];
 
 function fmt(t) {
   const s = Math.max(0, Math.floor(t));
@@ -40,7 +63,7 @@ function fmt(t) {
     sourcePath = await invoke("get_recording_info");
     player.src = convertFileSrc(sourcePath);
   } catch (e) {
-    alert(`Could not load recording: ${e}`);
+    toast(`Could not load recording: ${e}`, "error");
     return;
   }
   player.addEventListener("loadedmetadata", () => {
@@ -49,12 +72,13 @@ function fmt(t) {
     endT = duration;
     renderTimeline();
     renderCrop();
+    updateSummary();
   });
   await listen("export-progress", (e) => {
     // Le backend émet le timestamp de SORTIE ffmpeg, comprimé par setpts=PTS/speed.
     // On borne donc sur la durée effective (durée source / vitesse), pas la source.
     const total = effectiveDuration(startT, endT, Number(speedSel.value));
-    progress.value = total > 0 ? Math.min(1, e.payload / total) : 0;
+    setProgress(total > 0 ? Math.min(1, e.payload / total) : 0);
   });
 })();
 
@@ -62,6 +86,13 @@ function fmt(t) {
 
 function pct(t) {
   return duration > 0 ? (t / duration) * 100 : 0;
+}
+
+function renderTrimInputs({ force = false } = {}) {
+  trimStartInput.max = duration.toFixed(1);
+  trimEndInput.max = duration.toFixed(1);
+  if (force || document.activeElement !== trimStartInput) trimStartInput.value = startT.toFixed(1);
+  if (force || document.activeElement !== trimEndInput) trimEndInput.value = endT.toFixed(1);
 }
 
 function renderTimeline() {
@@ -74,6 +105,160 @@ function renderTimeline() {
   tStartEl.textContent = fmt(startT);
   tEndEl.textContent = fmt(endT);
   tDurEl.textContent = `${effectiveDuration(startT, endT, Number(speedSel.value)).toFixed(1)}s`;
+  renderTrimInputs();
+  resetTrimBtn.disabled = exporting || (startT === 0 && Math.abs(endT - duration) < 0.01);
+  updateSummary();
+}
+
+function setStatus(message) {
+  statusEl.textContent = message;
+}
+
+function setProgress(value) {
+  progress.value = value;
+  progressLabel.textContent = `${Math.round(value * 100)}%`;
+}
+
+function toast(message, kind = "info") {
+  const el = document.createElement("div");
+  el.className = `toast ${kind}`;
+  el.textContent = message;
+  toasts.append(el);
+  window.setTimeout(() => el.classList.add("visible"), 20);
+  window.setTimeout(() => {
+    el.classList.remove("visible");
+    window.setTimeout(() => el.remove(), 180);
+  }, kind === "error" ? 5200 : 3200);
+}
+
+function updateSummary(message = null) {
+  if (message) {
+    setStatus(message);
+    return;
+  }
+  const selected = effectiveDuration(startT, endT, Number(speedSel.value)).toFixed(1);
+  const cropLabel = crop ? "crop on" : "no crop";
+  setStatus(`${selected}s selected · ${speedSel.value}x · ${cropLabel}`);
+}
+
+function setExporting(value) {
+  exporting = value;
+  exportMp4Btn.disabled = value;
+  exportGifBtn.disabled = value;
+  cancelExportBtn.hidden = !value;
+  cropToggle.disabled = value;
+  resetCropBtn.disabled = value || !crop;
+  markStartBtn.disabled = value;
+  markEndBtn.disabled = value;
+  resetTrimBtn.disabled = value || (startT === 0 && Math.abs(endT - duration) < 0.01);
+  trimStartInput.disabled = value;
+  trimEndInput.disabled = value;
+  speedSel.disabled = value;
+  exportPresetSel.disabled = value;
+  discardBtn.disabled = value;
+  progressRow.hidden = !value;
+  if (!value) setProgress(0);
+  document.body.classList.toggle("exporting", value);
+}
+
+function renderExports() {
+  exportsPanel.hidden = exports.length === 0;
+  exportsCount.textContent = String(exports.length);
+  exportsList.innerHTML = "";
+  for (const item of exports) {
+    const row = document.createElement("div");
+    row.className = "export-row";
+    const label = document.createElement("div");
+    label.className = "export-label";
+    label.textContent = `${item.kind} · ${item.name}`;
+    const actions = document.createElement("div");
+    actions.className = "export-actions";
+    const open = exportAction("Open", async () => {
+      try {
+        await openPath(item.path);
+      } catch (e) {
+        toast(`Could not open file: ${e}`, "error");
+      }
+    });
+    const reveal = exportAction("Show", async () => {
+      try {
+        await revealItemInDir(item.path);
+      } catch (e) {
+        toast(`Could not show file: ${e}`, "error");
+      }
+    });
+    const copy = exportAction("Copy", async () => {
+      try {
+        await invoke("copy_text", { text: item.path });
+        toast("Path copied");
+      } catch (e) {
+        toast(`Could not copy path: ${e}`, "error");
+      }
+    });
+    const remove = exportAction("Delete", async () => {
+      const ok = typeof confirm === "function"
+        ? await confirm(`Delete ${item.name}?`, { title: "Delete export", kind: "warning" })
+        : window.confirm(`Delete ${item.name}?`);
+      if (!ok) return;
+      try {
+        await invoke("delete_recording_export", { path: item.path });
+        exports = exports.filter((candidate) => candidate.path !== item.path);
+        renderExports();
+        toast("Export deleted");
+      } catch (e) {
+        toast(`Could not delete export: ${e}`, "error");
+      }
+    });
+    remove.classList.add("danger-link");
+    actions.append(open, reveal, copy, remove);
+    row.append(label, actions);
+    exportsList.append(row);
+  }
+}
+
+function exportAction(label, onClick) {
+  const button = document.createElement("button");
+  button.className = "btn subtle";
+  button.type = "button";
+  button.textContent = label;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function fileName(path) {
+  return path.split(/[\\/]/).pop() || path;
+}
+
+function parentDir(path) {
+  const idx = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
+  return idx >= 0 ? path.slice(0, idx) : "";
+}
+
+function joinPath(dir, name) {
+  if (!dir) return name;
+  const sep = dir.includes("\\") ? "\\" : "/";
+  return `${dir}${sep}${name}`;
+}
+
+function stampName(gif) {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  const date = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+  const time = `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  return `recording-${date}-${time}-edited.${gif ? "gif" : "mp4"}`;
+}
+
+function presetFor(gif) {
+  const value = exportPresetSel.value;
+  if (gif && !value.startsWith("gif-")) return "gif-smooth";
+  if (!gif && !value.startsWith("mp4-")) return "mp4-high";
+  return value;
+}
+
+function ensurePresetKind(gif) {
+  const next = presetFor(gif);
+  if (exportPresetSel.value !== next) exportPresetSel.value = next;
+  return next;
 }
 
 function timeAtClientX(clientX) {
@@ -87,6 +272,14 @@ function applyTrim(rawStart, rawEnd) {
   startT = t.start;
   endT = t.end;
   renderTimeline();
+}
+
+function applyTrimInputs() {
+  const nextStart = Number.parseFloat(trimStartInput.value);
+  const nextEnd = Number.parseFloat(trimEndInput.value);
+  applyTrim(Number.isFinite(nextStart) ? nextStart : startT, Number.isFinite(nextEnd) ? nextEnd : endT);
+  renderTrimInputs({ force: true });
+  player.currentTime = Math.min(Math.max(player.currentTime || 0, startT), endT);
 }
 
 function startBracketDrag(handle, isStart) {
@@ -129,6 +322,16 @@ player.addEventListener("timeupdate", () => {
   renderTimeline();
 });
 
+trimStartInput.addEventListener("change", applyTrimInputs);
+trimEndInput.addEventListener("change", applyTrimInputs);
+markStartBtn.addEventListener("click", () => {
+  applyTrim(player.currentTime || 0, endT);
+  player.currentTime = startT;
+});
+markEndBtn.addEventListener("click", () => {
+  applyTrim(startT, player.currentTime || duration);
+  player.currentTime = endT;
+});
 speedSel.addEventListener("change", renderTimeline);
 
 // ---- Crop -----------------------------------------------------------------
@@ -139,9 +342,16 @@ speedSel.addEventListener("change", renderTimeline);
 function renderCrop() {
   if (!crop) {
     cropBox.hidden = true;
+    cropMeta.textContent = "Crop off";
     return;
   }
   crop = clampCrop(crop, player.clientWidth, player.clientHeight);
+  const videoCrop = player.videoWidth && player.videoHeight
+    ? displayToVideo(crop, player.clientWidth, player.clientHeight, player.videoWidth, player.videoHeight)
+    : null;
+  cropMeta.textContent = videoCrop
+    ? `Crop ${videoCrop.width}×${videoCrop.height}`
+    : `Crop ${Math.round(crop.width)}×${Math.round(crop.height)}`;
   cropBox.hidden = false;
   cropBox.style.left = `${player.offsetLeft + crop.x}px`;
   cropBox.style.top = `${player.offsetTop + crop.y}px`;
@@ -161,6 +371,23 @@ cropToggle.addEventListener("click", () => {
     cropToggle.classList.add("active");
   }
   renderCrop();
+  resetCropBtn.disabled = !crop;
+  updateSummary();
+});
+
+resetCropBtn.addEventListener("click", () => {
+  crop = null;
+  cropToggle.classList.remove("active");
+  renderCrop();
+  resetCropBtn.disabled = true;
+  updateSummary();
+});
+
+resetTrimBtn.addEventListener("click", () => {
+  startT = 0;
+  endT = duration;
+  player.currentTime = 0;
+  renderTimeline();
 });
 
 // Drag du corps (déplacement) et des poignées (redimensionnement). L'état de
@@ -219,6 +446,7 @@ function onDragMove(event) {
   }
   crop = clampCrop(next, player.clientWidth, player.clientHeight);
   renderCrop();
+  updateSummary();
 }
 
 function endDrag(event) {
@@ -248,11 +476,15 @@ window.addEventListener("resize", renderCrop);
 // ---- Export ---------------------------------------------------------------
 
 async function doExport(gif) {
-  const suggested = sourcePath.replace(/\.mp4$/, gif ? ".gif" : "-edited.mp4");
+  if (exporting) return;
+  const preset = ensurePresetKind(gif);
+  const suggested = joinPath(parentDir(sourcePath), stampName(gif));
   const outputPath = await save({ defaultPath: suggested });
   if (!outputPath) return;
-  progress.value = 0;
-  progress.hidden = false;
+  setProgress(0);
+  cancelRequested = false;
+  setExporting(true);
+  updateSummary(`Exporting ${gif ? "GIF" : "MP4"}...`);
   const cropVideo = crop
     ? displayToVideo(crop, player.clientWidth, player.clientHeight, player.videoWidth, player.videoHeight)
     : null;
@@ -264,22 +496,69 @@ async function doExport(gif) {
         crop: cropVideo,
         speed: Number(speedSel.value),
         gif,
+        preset,
         outputPath,
       },
     });
-    window.close();
+    setProgress(1);
+    exports.unshift({
+      kind: gif ? "GIF" : "MP4",
+      path: outputPath,
+      name: fileName(outputPath),
+    });
+    renderExports();
+    updateSummary(`Saved ${gif ? "GIF" : "MP4"}. You can adjust and export again.`);
+    toast(`${gif ? "GIF" : "MP4"} saved`);
   } catch (e) {
-    alert(`Export failed: ${e}`);
+    if (cancelRequested) {
+      updateSummary("Export cancelled");
+      toast("Export cancelled");
+    } else {
+      updateSummary("Export failed");
+      toast(`Export failed: ${e}`, "error");
+    }
   } finally {
-    progress.hidden = true;
+    setExporting(false);
+    cancelRequested = false;
   }
 }
 
-document.getElementById("export-mp4").addEventListener("click", () => doExport(false));
-document.getElementById("export-gif").addEventListener("click", () => doExport(true));
-document.getElementById("discard").addEventListener("click", async () => {
+exportMp4Btn.addEventListener("click", () => doExport(false));
+exportGifBtn.addEventListener("click", () => doExport(true));
+cancelExportBtn.addEventListener("click", async () => {
+  if (!exporting) return;
+  cancelRequested = true;
+  updateSummary("Cancelling export...");
+  try {
+    await invoke("cancel_export");
+  } catch (e) {
+    toast(`Could not cancel export: ${e}`, "error");
+  }
+});
+discardBtn.addEventListener("click", async () => {
+  if (exports.length === 0) {
+    const ok = typeof confirm === "function"
+      ? await confirm("Discard this recording without saving an export?", { title: "Discard recording", kind: "warning" })
+      : window.confirm("Discard this recording without saving an export?");
+    if (!ok) return;
+  }
   try {
     await invoke("discard_recording");
-  } catch (_) {}
-  window.close();
+    await invoke("close_recorder");
+  } catch (e) {
+    toast(`Discard failed: ${e}`, "error");
+  }
+});
+
+window.addEventListener("keydown", (event) => {
+  if (event.target?.matches?.("select, input, textarea")) return;
+  if (event.code === "Space") {
+    event.preventDefault();
+    if (player.paused) player.play();
+    else player.pause();
+  } else if (event.key.toLowerCase() === "c") {
+    cropToggle.click();
+  } else if (event.key === "Enter") {
+    doExport(false);
+  }
 });

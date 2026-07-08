@@ -33,7 +33,9 @@ pub fn run() {
             let guard = state.0.lock().unwrap_or_else(|e| e.into_inner());
             let want_window = request.uri().path().ends_with("/window");
             let img = if want_window {
-                guard.as_ref().and_then(|s| s.window_capture.as_ref().map(|w| &w.image))
+                guard
+                    .as_ref()
+                    .and_then(|s| s.window_capture.as_ref().map(|w| &w.image))
             } else {
                 guard.as_ref().map(|s| &s.image)
             };
@@ -82,7 +84,10 @@ pub fn run() {
             record::recording_hud_info,
             record::get_recording_info,
             record::discard_recording,
+            record::close_recorder,
             record::export_recording,
+            record::cancel_export,
+            record::delete_recording_export,
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]

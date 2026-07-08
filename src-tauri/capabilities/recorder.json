@@ -6,6 +6,9 @@
   "permissions": [
     "core:default",
     "core:event:default",
-    "dialog:allow-save"
+    "dialog:allow-save",
+    "dialog:allow-message",
+    "opener:allow-open-path",
+    "opener:allow-reveal-item-in-dir"
   ]
 }

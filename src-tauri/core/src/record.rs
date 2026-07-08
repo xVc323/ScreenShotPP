@@ -25,10 +25,12 @@ pub fn even_dim(v: u32) -> u32 {
 
 /// Réglages d'encodage communs (enregistrement et export MP4).
 fn h264_encode_args() -> Vec<String> {
-    ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect()
+    [
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
 }
 
 /// Args ffmpeg pour capturer une région d'un moniteur Windows via ddagrab
@@ -95,10 +97,49 @@ pub struct ExportOptions {
     pub crop: Option<Region>,
     pub speed: f64, // 1.0, 2.0, 4.0
     pub gif: bool,
+    pub preset: ExportPreset,
 }
 
-/// Fréquence fixe des GIFs exportés.
-const GIF_FPS: u32 = 15;
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ExportPreset {
+    Mp4High,
+    Mp4Small,
+    GifSmooth,
+    GifSmall,
+}
+
+impl ExportPreset {
+    pub fn from_str(s: &str, gif: bool) -> Self {
+        match s {
+            "mp4-small" => ExportPreset::Mp4Small,
+            "gif-smooth" => ExportPreset::GifSmooth,
+            "gif-small" => ExportPreset::GifSmall,
+            "mp4-high" => ExportPreset::Mp4High,
+            _ if gif => ExportPreset::GifSmooth,
+            _ => ExportPreset::Mp4High,
+        }
+    }
+}
+
+fn h264_export_args(preset: ExportPreset) -> Vec<String> {
+    let crf = match preset {
+        ExportPreset::Mp4Small => "28",
+        _ => "20",
+    };
+    [
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", crf, "-pix_fmt", "yuv420p",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
+}
+
+fn gif_fps(preset: ExportPreset) -> u32 {
+    match preset {
+        ExportPreset::GifSmall => 10,
+        _ => 20,
+    }
+}
 
 /// Chaîne de filtres commune (crop puis vitesse), vide si aucun des deux.
 fn filter_prefix(opts: &ExportOptions) -> Vec<String> {
@@ -133,7 +174,10 @@ pub fn export_args(input: &str, opts: &ExportOptions, output: &str) -> Vec<Strin
     let prefix = filter_prefix(opts);
     if opts.gif {
         let mut chain = prefix;
-        chain.push(format!("fps={GIF_FPS}"));
+        chain.push(format!("fps={}", gif_fps(opts.preset)));
+        if opts.preset == ExportPreset::GifSmall {
+            chain.push("scale='min(960,iw)':-2".into());
+        }
         let filter = format!(
             "{},split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer",
             chain.join(",")
@@ -143,7 +187,7 @@ pub fn export_args(input: &str, opts: &ExportOptions, output: &str) -> Vec<Strin
         if !prefix.is_empty() {
             args.extend(["-vf".into(), prefix.join(",")]);
         }
-        args.extend(h264_encode_args());
+        args.extend(h264_export_args(opts.preset));
         args.extend(["-movflags".into(), "+faststart".into()]);
     }
     args.push(output.into());
@@ -300,8 +344,16 @@ mod tests {
     fn windows_args_use_ddagrab_with_region_fps_and_cursor() {
         let args = windows_capture_args(
             1,
-            Region { x: 10, y: 20, width: 641, height: 480 },
-            &RecordOptions { fps: 30, cursor: true },
+            Region {
+                x: 10,
+                y: 20,
+                width: 641,
+                height: 480,
+            },
+            &RecordOptions {
+                fps: 30,
+                cursor: true,
+            },
             "out.mp4",
         );
         let joined = args.join(" ");
@@ -321,8 +373,16 @@ mod tests {
     fn windows_args_hide_cursor_when_disabled() {
         let args = windows_capture_args(
             0,
-            Region { x: 0, y: 0, width: 100, height: 100 },
-            &RecordOptions { fps: 30, cursor: false },
+            Region {
+                x: 0,
+                y: 0,
+                width: 100,
+                height: 100,
+            },
+            &RecordOptions {
+                fps: 30,
+                cursor: false,
+            },
             "o.mp4",
         );
         assert!(args.join(" ").contains("draw_mouse=0"));
@@ -332,8 +392,16 @@ mod tests {
     fn macos_args_use_avfoundation_and_pixel_crop() {
         let args = macos_capture_args(
             3,
-            Region { x: 4, y: 8, width: 300, height: 201 },
-            &RecordOptions { fps: 30, cursor: true },
+            Region {
+                x: 4,
+                y: 8,
+                width: 300,
+                height: 201,
+            },
+            &RecordOptions {
+                fps: 30,
+                cursor: true,
+            },
             "out.mp4",
         );
         let joined = args.join(" ");
@@ -351,9 +419,15 @@ mod tests {
         let opts = ExportOptions {
             trim_start: 1.5,
             trim_end: 9.0,
-            crop: Some(Region { x: 2, y: 4, width: 500, height: 301 }),
+            crop: Some(Region {
+                x: 2,
+                y: 4,
+                width: 500,
+                height: 301,
+            }),
             speed: 2.0,
             gif: false,
+            preset: ExportPreset::Mp4High,
         };
         let args = export_args("in.mp4", &opts, "out.mp4");
         let joined = args.join(" ");
@@ -373,35 +447,64 @@ mod tests {
             crop: None,
             speed: 1.0,
             gif: false,
+            preset: ExportPreset::Mp4High,
         };
         let args = export_args("in.mp4", &opts, "out.mp4");
         assert!(!args.contains(&"-vf".to_string()));
     }
 
     #[test]
-    fn export_args_gif_uses_two_pass_palette_at_15fps() {
+    fn export_args_gif_uses_two_pass_palette_at_20fps() {
         let opts = ExportOptions {
             trim_start: 0.0,
             trim_end: 3.0,
             crop: None,
             speed: 1.0,
             gif: true,
+            preset: ExportPreset::GifSmooth,
         };
         let args = export_args("in.mp4", &opts, "out.gif");
         let joined = args.join(" ");
-        assert!(joined.contains("fps=15"));
+        assert!(joined.contains("fps=20"));
         assert!(joined.contains("palettegen"));
         assert!(joined.contains("paletteuse"));
         assert_eq!(args.last().unwrap(), "out.gif");
     }
 
     #[test]
+    fn export_args_small_gif_caps_size_and_fps() {
+        let opts = ExportOptions {
+            trim_start: 0.0,
+            trim_end: 3.0,
+            crop: None,
+            speed: 1.0,
+            gif: true,
+            preset: ExportPreset::GifSmall,
+        };
+        let joined = export_args("in.mp4", &opts, "out.gif").join(" ");
+        assert!(joined.contains("fps=10"));
+        assert!(joined.contains("scale='min(960,iw)':-2"));
+    }
+
+    #[test]
     fn shortcut_action_follows_state() {
-        assert!(matches!(on_record_shortcut(false, false), ShortcutAction::StartSelection));
-        assert!(matches!(on_record_shortcut(true, false), ShortcutAction::Stop));
-        assert!(matches!(on_record_shortcut(false, true), ShortcutAction::Ignore));
+        assert!(matches!(
+            on_record_shortcut(false, false),
+            ShortcutAction::StartSelection
+        ));
+        assert!(matches!(
+            on_record_shortcut(true, false),
+            ShortcutAction::Stop
+        ));
+        assert!(matches!(
+            on_record_shortcut(false, true),
+            ShortcutAction::Ignore
+        ));
         // "recording" prime sur "busy" : on peut toujours arrêter.
-        assert!(matches!(on_record_shortcut(true, true), ShortcutAction::Stop));
+        assert!(matches!(
+            on_record_shortcut(true, true),
+            ShortcutAction::Stop
+        ));
     }
 
     #[test]
@@ -417,7 +520,8 @@ mod tests {
 
     #[test]
     fn parses_ffmpeg_progress_time() {
-        let line = "frame=  120 fps= 30 q=23.0 size=     512KiB time=00:01:02.50 bitrate= 900kbits/s";
+        let line =
+            "frame=  120 fps= 30 q=23.0 size=     512KiB time=00:01:02.50 bitrate= 900kbits/s";
         assert_eq!(parse_ffmpeg_time(line), Some(62.5));
         assert_eq!(parse_ffmpeg_time("no time here"), None);
     }
