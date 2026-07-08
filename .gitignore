@@ -42,3 +42,6 @@ Certificates.p12
 
 # local zig-linker shim (machine-specific, no system cc)
 /src-tauri/.cargo/config.toml
+
+# ffmpeg sidecar téléchargé par scripts/fetch-ffmpeg.sh (jamais commité)
+/src-tauri/binaries/

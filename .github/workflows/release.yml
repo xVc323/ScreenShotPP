@@ -14,6 +14,9 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch ffmpeg sidecar
+        shell: bash
+        run: scripts/fetch-ffmpeg.sh macos-arm
       - uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -93,6 +96,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch ffmpeg sidecar
+        shell: bash
+        run: scripts/fetch-ffmpeg.sh windows
       - uses: actions/setup-node@v6
         with:
           node-version: 22

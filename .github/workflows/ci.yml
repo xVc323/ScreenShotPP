@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: 22
       - name: Tests frontend (logique pure)
-        run: node --test src/accelerator.test.js src/editable-target.test.js src/editor/history.test.js src/editor/color.test.js src/editor/bubbles.test.js src/editor/editor.test.js src/editor/mosaic.test.js
+        run: node --test src/accelerator.test.js src/editable-target.test.js src/editor/history.test.js src/editor/color.test.js src/editor/bubbles.test.js src/editor/editor.test.js src/editor/mosaic.test.js src/recorder/trim.test.js src/recorder/crop.test.js
       - name: Release storefront readiness
         shell: bash
         run: scripts/check-release-readiness.sh
@@ -41,6 +41,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
+      - name: Fetch ffmpeg sidecar
+        shell: bash
+        run: scripts/fetch-ffmpeg.sh ${{ runner.os == 'Windows' && 'windows' || 'macos-arm' }}
       - uses: dtolnay/rust-toolchain@stable
       - name: "Use D: drive for cargo (Windows)"
         if: runner.os == 'Windows'

@@ -98,6 +98,13 @@ Actions with a Developer ID Application certificate.
 Issues and pull requests are welcome. Please run the Rust and frontend checks before
 submitting a change.
 
+## ffmpeg
+
+Video recording and GIF export use a bundled [FFmpeg](https://ffmpeg.org)
+binary (GPL build), running as a separate process. FFmpeg is a trademark of
+Fabrice Bellard. Windows builds from [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds),
+macOS builds from [martin-riedl.de](https://ffmpeg.martin-riedl.de).
+
 ## License
 
 [MIT](LICENSE)

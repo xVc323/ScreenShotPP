@@ -41,6 +41,9 @@ redoButton.disabled = true;
       invoke("get_capture_metadata"),
     ]);
     const scale = image.naturalWidth / window.innerWidth;
+    // Mode vidéo (raccourci d'enregistrement) : la sélection déclenche
+    // start_recording au lieu d'afficher la barre d'outils d'annotation.
+    const isVideo = metadata.mode === "video";
     const autoSelections = Array.isArray(metadata.window_selections)
       ? metadata.window_selections.map(({ selection, activation }) => ({
           selection: rectToCss(selection, scale),
@@ -97,6 +100,19 @@ redoButton.disabled = true;
       redoButton.disabled = !canRedo;
     };
 
+    // Démarre l'enregistrement sur le rect physiquement sélectionné (pixels image,
+    // relatifs au moniteur) — appelé depuis les deux chemins de sélection en mode vidéo.
+    function startVideoRecording() {
+      const rect = editor?.selectionPhysicalRect();
+      if (!rect) return;
+      setBusy(true);
+      invoke("start_recording", { rect }).catch((error) => {
+        console.error("start_recording failed:", error);
+        setBusy(false);
+        invoke("cancel_capture").catch(() => {});
+      });
+    }
+
     // Bascule vers le rendu "fenêtre entière" letterboxée quand l'utilisateur
     // auto-sélectionne la fenêtre débordante : on charge son bitmap complet, on le
     // loge dans le viewport et on pré-sélectionne la fenêtre entière.
@@ -136,7 +152,11 @@ redoButton.disabled = true;
         strokeWidth: parseInt(thickness.value, 10),
         fontSize: parseInt(fontsize.value, 10),
         onSelectMove: ({ point, rect: r }) => updateLoupe(point, r),
-        onSelectionDone: (sel) => { hideLoupe(); positionAndShowToolbar(sel); },
+        onSelectionDone: (sel) => {
+          hideLoupe();
+          if (isVideo) { startVideoRecording(); return; }
+          positionAndShowToolbar(sel);
+        },
         onHistoryChange,
       });
       setActiveTool("select");
@@ -158,6 +178,7 @@ redoButton.disabled = true;
         maybeSwitchToWindow(selection).then((switched) => {
           if (switched) return;
           hideLoupe();
+          if (isVideo) { startVideoRecording(); return; }
           positionAndShowToolbar(selection);
         });
       },
