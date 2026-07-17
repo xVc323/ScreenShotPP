@@ -5,6 +5,8 @@ import { mosaicCrop } from "./mosaic.js";
 
 const MIN_SIZE = 2;
 const DRAG_THRESHOLD = 4;
+const HANDLE_RADIUS = 5;
+const HANDLE_HIT_STROKE = 16;
 const MOSAIC_PIXEL = 16;
 const FONT_FAMILY = "Arial";
 const BUBBLE_RADIUS = 15;
@@ -22,8 +24,9 @@ export function createEditor(o = {}) {
   const stage = new Konva.Stage({ container: o.container, width, height });
   const backgroundLayer = new Konva.Layer();
   const annotationLayer = new Konva.Layer();
-  const veilLayer = new Konva.Layer({ listening: false });
+  const veilLayer = new Konva.Layer();
   const shapeGroup = new Konva.Group();
+  const selectionHandleGroup = new Konva.Group({ name: "selection-handles" });
   const transformer = new Konva.Transformer({ rotateEnabled: false, flipEnabled: false, boundBoxFunc: boundResizeBox });
   const history = new History();
 
@@ -34,6 +37,7 @@ export function createEditor(o = {}) {
   let strokeWidth = positiveNumber(o.strokeWidth, 3);
   let fontSize = positiveNumber(o.fontSize, 24);
   let selectionDraft = null;
+  let selectionResizeSide = null;
   let annotationDraft = null;
   let activeText = null;
   let start = null;
@@ -54,6 +58,7 @@ export function createEditor(o = {}) {
   stage.add(annotationLayer);
   stage.add(veilLayer);
   annotationLayer.add(shapeGroup);
+  annotationLayer.add(selectionHandleGroup);
   annotationLayer.add(transformer);
 
   if (o.image) backgroundLayer.add(new Konva.Image({ image: o.image, x: backgroundRect.x, y: backgroundRect.y, width: backgroundRect.width, height: backgroundRect.height }));
@@ -67,6 +72,8 @@ export function createEditor(o = {}) {
     if (event.evt.button != null && event.evt.button !== 0) return;
     const point = stage.getPointerPosition();
     if (!point) return;
+
+    if (selectionResizeSide) return;
 
     if (!selection) {
       const autoSelection = autoSelectionAt(point);
@@ -155,6 +162,11 @@ export function createEditor(o = {}) {
       return;
     }
 
+    if (selectionResizeSide) {
+      resizeSelection(selectionResizeSide, clampToStage(rawPoint));
+      return;
+    }
+
     if (start && annotationDraft) {
       const point = clampToSelection(rawPoint);
       if (annotationDraft.descriptor.type === "free") {
@@ -178,6 +190,12 @@ export function createEditor(o = {}) {
       cancelDraft();
       return;
     }
+    if (selectionResizeSide) {
+      selectionResizeSide = null;
+      o.onSelectionDone?.({ ...selection });
+      return;
+    }
+
     start = null;
 
     if (!selection && pendingAutoSelection) {
@@ -227,6 +245,7 @@ export function createEditor(o = {}) {
     annotationDraft = null;
     selectionDraft = null;
     pendingAutoSelection = null;
+    selectionResizeSide = null;
     start = null;
     if (selection) drawVeil();
     else {
@@ -532,6 +551,7 @@ export function createEditor(o = {}) {
 
   function drawVeil(rect = selection, isDraft = false) {
     veilLayer.destroyChildren();
+    selectionHandleGroup.destroyChildren();
     const shade = { fill: o.veilColor || "rgba(0, 0, 0, 0.45)", listening: false };
     const { x, y, width: w, height: h } = rect;
     veilLayer.add(
@@ -541,7 +561,68 @@ export function createEditor(o = {}) {
       new Konva.Rect({ ...shade, x: 0, y: y + h, width, height: height - y - h }),
       new Konva.Rect({ x, y, width: w, height: h, stroke: o.selectionColor || "#168cff", strokeWidth: 2, dash: isDraft ? [6, 4] : undefined, listening: false }),
     );
+    if (!isDraft) {
+      const handles = [
+        ["top", x + w / 2, y],
+        ["right", x + w, y + h / 2],
+        ["bottom", x + w / 2, y + h],
+        ["left", x, y + h / 2],
+      ];
+      for (const [side, handleX, handleY] of handles) {
+        veilLayer.add(new Konva.Circle({
+          name: "selection-handle-visual",
+          side,
+          x: handleX,
+          y: handleY,
+          radius: HANDLE_RADIUS,
+          fill: "#ffffff",
+          stroke: "rgba(0, 0, 0, 0.45)",
+          strokeWidth: 1,
+          listening: false,
+        }));
+        const hitTarget = new Konva.Circle({
+          name: "selection-handle",
+          side,
+          x: handleX,
+          y: handleY,
+          radius: HANDLE_RADIUS,
+          fill: "rgba(0, 0, 0, 0)",
+          stroke: "rgba(0, 0, 0, 0)",
+          strokeWidth: 1,
+          hitStrokeWidth: HANDLE_HIT_STROKE,
+        });
+        hitTarget.on("pointerdown", (event) => {
+          if (event.evt.button != null && event.evt.button !== 0) return;
+          event.cancelBubble = true;
+          selectionResizeSide = side;
+        });
+        selectionHandleGroup.add(hitTarget);
+      }
+    }
+    annotationLayer.draw();
     veilLayer.draw();
+  }
+
+  function resizeSelection(side, point) {
+    const next = { ...selection };
+    if (side === "left") {
+      const right = selection.x + selection.width;
+      next.x = clamp(point.x, 0, right - MIN_SIZE);
+      next.width = right - next.x;
+    } else if (side === "right") {
+      const right = clamp(point.x, selection.x + MIN_SIZE, width);
+      next.width = right - selection.x;
+    } else if (side === "top") {
+      const bottom = selection.y + selection.height;
+      next.y = clamp(point.y, 0, bottom - MIN_SIZE);
+      next.height = bottom - next.y;
+    } else if (side === "bottom") {
+      const bottom = clamp(point.y, selection.y + MIN_SIZE, height);
+      next.height = bottom - selection.y;
+    }
+    selection = next;
+    shapeGroup.clip(selection);
+    drawVeil();
   }
 
   function clampToStage(point) {
