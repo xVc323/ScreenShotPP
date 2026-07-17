@@ -46,10 +46,9 @@ Sorted by priority / effort. Each item keeps its open technical question where o
       Open questions: encoder (bundled ffmpeg? OS API?), binary size, continuous
       capture performance, output format (mp4 / gif / animated webp).
 
-- [x] **Adjust the capture area after selection** — implemented on
-      `feature/selection-resize-handles`; not yet merged. Each of the four sides
-      can be dragged independently through a small white circular handle centered
-      on that side.
+- [x] **Adjust the capture area after selection** — shipped in v0.5.1.
+      Each of the four sides can be dragged independently through a small white
+      circular handle centered on that side.
 
 - [ ] **Capture history**
       Persist each copied/saved capture to a dedicated folder plus an index, with a
