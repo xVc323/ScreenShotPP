@@ -8,6 +8,7 @@ src-tauri/swift-lib/.build/
 
 # Compagnon visuel brainstorming
 .superpowers/
+.worktrees/
 
 # OS
 .DS_Store
