@@ -245,6 +245,26 @@ test("les visuels restent au-dessus du voile sans intercepter les ancres du Tran
   assert.ok(annotationLayer.children.indexOf(transformer) > annotationLayer.children.indexOf(handleGroup));
 });
 
+test("un bouton non principal sur une poignée ne redimensionne ni ne valide", () => {
+  const done = [];
+  const editor = createEditor({
+    container: "stage",
+    initialSelection: { x: 10, y: 10, width: 40, height: 40 },
+    onSelectionDone: (selection) => done.push({ ...selection }),
+  });
+  done.length = 0;
+  const event = { evt: { button: 2 }, cancelBubble: false };
+
+  selectionHandle("right").handlers.get("pointerdown")(event);
+  stage.pointer = { x: 70, y: 30 };
+  stage.emit("pointermove");
+  stage.emit("pointerup");
+
+  assert.equal(event.cancelBubble, false);
+  assert.deepEqual(editor.selectionPhysicalRect(), { x: 10, y: 10, width: 40, height: 40 });
+  assert.deepEqual(done, []);
+});
+
 test("les poignées respectent le viewport et la taille minimale", () => {
   const editor = createEditor({
     container: "stage",

@@ -592,6 +592,7 @@ export function createEditor(o = {}) {
           hitStrokeWidth: HANDLE_HIT_STROKE,
         });
         hitTarget.on("pointerdown", (event) => {
+          if (event.evt.button != null && event.evt.button !== 0) return;
           event.cancelBubble = true;
           selectionResizeSide = side;
         });
