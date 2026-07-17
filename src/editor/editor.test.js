@@ -172,8 +172,9 @@ test("un micro-déplacement sous le seuil reste un clic et verrouille la fenêtr
 });
 
 function selectionHandle(side) {
-  const veilLayer = stage.children[2];
-  return veilLayer.children.find((node) => node.attrs.name === "selection-handle" && node.attrs.side === side);
+  const annotationLayer = stage.children[1];
+  const handleGroup = annotationLayer.children.find((node) => node.attrs.name === "selection-handles");
+  return handleGroup?.children.find((node) => node.attrs.name === "selection-handle" && node.attrs.side === side);
 }
 
 function dragSelectionHandle(side, point) {
@@ -202,6 +203,23 @@ test("les quatre poignées déplacent uniquement leur côté", () => {
     assert.deepEqual(editor.selectionPhysicalRect(), expected, side);
     editor.destroy();
   }
+});
+
+test("une ancre du Transformer superposée garde la priorité sur une poignée", () => {
+  createEditor({
+    container: "stage",
+    initialSelection: { x: 10, y: 10, width: 40, height: 40 },
+  });
+  const annotationLayer = stage.children[1];
+  const handleGroup = annotationLayer.children.find((node) => node.attrs.name === "selection-handles");
+  const transformer = annotationLayer.children.find((node) => node instanceof FakeTransformer);
+
+  assert.ok(handleGroup, "missing selection handle group");
+  assert.equal(handleGroup.children.length, 4);
+  assert.ok(
+    annotationLayer.children.indexOf(transformer) > annotationLayer.children.indexOf(handleGroup),
+    "Konva doit tester et dessiner le Transformer après les poignées superposées",
+  );
 });
 
 test("les poignées respectent le viewport et la taille minimale", () => {

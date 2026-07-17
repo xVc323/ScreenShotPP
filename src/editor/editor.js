@@ -26,6 +26,7 @@ export function createEditor(o = {}) {
   const annotationLayer = new Konva.Layer();
   const veilLayer = new Konva.Layer();
   const shapeGroup = new Konva.Group();
+  const selectionHandleGroup = new Konva.Group({ name: "selection-handles" });
   const transformer = new Konva.Transformer({ rotateEnabled: false, flipEnabled: false, boundBoxFunc: boundResizeBox });
   const history = new History();
 
@@ -57,6 +58,7 @@ export function createEditor(o = {}) {
   stage.add(annotationLayer);
   stage.add(veilLayer);
   annotationLayer.add(shapeGroup);
+  annotationLayer.add(selectionHandleGroup);
   annotationLayer.add(transformer);
 
   if (o.image) backgroundLayer.add(new Konva.Image({ image: o.image, x: backgroundRect.x, y: backgroundRect.y, width: backgroundRect.width, height: backgroundRect.height }));
@@ -549,6 +551,7 @@ export function createEditor(o = {}) {
 
   function drawVeil(rect = selection, isDraft = false) {
     veilLayer.destroyChildren();
+    selectionHandleGroup.destroyChildren();
     const shade = { fill: o.veilColor || "rgba(0, 0, 0, 0.45)", listening: false };
     const { x, y, width: w, height: h } = rect;
     veilLayer.add(
@@ -581,9 +584,10 @@ export function createEditor(o = {}) {
           event.cancelBubble = true;
           selectionResizeSide = side;
         });
-        veilLayer.add(handle);
+        selectionHandleGroup.add(handle);
       }
     }
+    annotationLayer.draw();
     veilLayer.draw();
   }
 
