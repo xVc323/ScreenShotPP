@@ -5,13 +5,29 @@ class FakeNode {
   constructor(attrs = {}) {
     this.attrs = attrs;
     this.handlers = new Map();
+    this.children = [];
+    this.parent = null;
+    this.clipRect = null;
   }
 
-  add() {}
+  add(...nodes) {
+    for (const node of nodes) {
+      node.parent = this;
+      this.children.push(node);
+    }
+  }
   draw() {}
-  destroyChildren() {}
-  clip() {}
+  destroy() {}
+  destroyChildren() { this.children = []; }
+  clip(rect) { this.clipRect = { ...rect }; }
   on(name, handler) { this.handlers.set(name, handler); }
+  emit(name, event = {}) { this.handlers.get(name)?.({ cancelBubble: false, ...event }); }
+  findOne(selector) {
+    if (!selector.startsWith(".")) return null;
+    const name = selector.slice(1);
+    return this.children.find((node) => node.attrs.name === name) || null;
+  }
+  getAttr(name) { return this.attrs[name]; }
 }
 
 class FakeStage extends FakeNode {
@@ -21,7 +37,9 @@ class FakeStage extends FakeNode {
   }
 
   getPointerPosition() { return this.pointer; }
-  emit(name) { this.handlers.get(name)?.({ evt: { button: 0 } }); }
+  emit(name, event = {}) {
+    this.handlers.get(name)?.({ evt: { button: 0 }, target: this, ...event });
+  }
 }
 
 class FakeTransformer extends FakeNode {}
@@ -36,6 +54,7 @@ globalThis.window = {
     Transformer: FakeTransformer,
     Rect: FakeNode,
     Image: FakeNode,
+    Circle: FakeNode,
   },
   addEventListener() {},
   removeEventListener() {},
@@ -150,4 +169,67 @@ test("un micro-déplacement sous le seuil reste un clic et verrouille la fenêtr
 
   assert.equal(editor.hasSelection(), true);
   assert.deepEqual(done.at(-1), { x: 10, y: 12, width: 50, height: 40 });
+});
+
+function selectionHandle(side) {
+  const veilLayer = stage.children[2];
+  return veilLayer.children.find((node) => node.attrs.name === "selection-handle" && node.attrs.side === side);
+}
+
+function dragSelectionHandle(side, point) {
+  const handle = selectionHandle(side);
+  assert.ok(handle, `missing ${side} handle`);
+  handle.emit("pointerdown", { evt: { button: 0 } });
+  stage.pointer = point;
+  stage.emit("pointermove");
+  stage.emit("pointerup");
+}
+
+test("les quatre poignées déplacent uniquement leur côté", () => {
+  const cases = [
+    ["left", { x: 5, y: 30 }, { x: 5, y: 10, width: 45, height: 40 }],
+    ["right", { x: 70, y: 30 }, { x: 10, y: 10, width: 60, height: 40 }],
+    ["top", { x: 30, y: 5 }, { x: 10, y: 5, width: 40, height: 45 }],
+    ["bottom", { x: 30, y: 70 }, { x: 10, y: 10, width: 40, height: 60 }],
+  ];
+
+  for (const [side, point, expected] of cases) {
+    const editor = createEditor({
+      container: "stage",
+      initialSelection: { x: 10, y: 10, width: 40, height: 40 },
+    });
+    dragSelectionHandle(side, point);
+    assert.deepEqual(editor.selectionPhysicalRect(), expected, side);
+    editor.destroy();
+  }
+});
+
+test("les poignées respectent le viewport et la taille minimale", () => {
+  const editor = createEditor({
+    container: "stage",
+    initialSelection: { x: 10, y: 10, width: 40, height: 40 },
+  });
+
+  dragSelectionHandle("left", { x: 99, y: 30 });
+  assert.deepEqual(editor.selectionPhysicalRect(), { x: 48, y: 10, width: 2, height: 40 });
+
+  dragSelectionHandle("top", { x: 48, y: -20 });
+  assert.deepEqual(editor.selectionPhysicalRect(), { x: 48, y: 0, width: 2, height: 50 });
+});
+
+test("le redimensionnement met à jour le clip, l’échelle et le callback final", () => {
+  const done = [];
+  const editor = createEditor({
+    container: "stage",
+    scale: 2,
+    initialSelection: { x: 10, y: 10, width: 40, height: 40 },
+    onSelectionDone: (selection) => done.push({ ...selection }),
+  });
+  const shapeGroup = stage.children[1].children[0];
+
+  dragSelectionHandle("right", { x: 30, y: 30 });
+
+  assert.deepEqual(shapeGroup.clipRect, { x: 10, y: 10, width: 20, height: 40 });
+  assert.deepEqual(editor.selectionPhysicalRect(), { x: 20, y: 20, width: 40, height: 80 });
+  assert.deepEqual(done.at(-1), { x: 10, y: 10, width: 20, height: 40 });
 });
