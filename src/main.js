@@ -19,6 +19,10 @@ const launchAtLogin = document.getElementById("launch-at-login");
 const delayedShortcutBtn = document.getElementById("delayed-shortcut");
 const captureDelayEl = document.getElementById("capture-delay");
 const cancelShortcutBtn = document.getElementById("cancel-shortcut");
+const recordShortcutBtn = document.getElementById("record-shortcut");
+const recordDelayEl = document.getElementById("record-delay");
+const recordCursorCheckbox = document.getElementById("record-cursor");
+const recordFpsSel = document.getElementById("record-fps");
 
 let settings = await invoke("get_settings");
 render();
@@ -29,6 +33,10 @@ function render() {
   delayedShortcutBtn.textContent = settings.delayed_capture_shortcut;
   captureDelayEl.value = settings.capture_delay_secs;
   cancelShortcutBtn.textContent = settings.cancel_shortcut;
+  recordShortcutBtn.textContent = settings.record_shortcut;
+  recordDelayEl.value = settings.record_delay_secs ?? 0;
+  recordCursorCheckbox.checked = !!settings.record_cursor;
+  recordFpsSel.value = String(settings.record_fps);
   folderEl.textContent = settings.default_save_folder || "Desktop";
   formatSel.value = settings.default_format;
   langSel.value = settings.ocr_language;
@@ -45,7 +53,7 @@ async function persist() {
 }
 
 // Enregistreur de touches partagé pour les boutons de raccourci.
-let recordingField = null; // "capture_shortcut" | "delayed_capture_shortcut" | "cancel_shortcut"
+let recordingField = null; // "capture_shortcut" | "delayed_capture_shortcut" | "cancel_shortcut" | "record_shortcut"
 let recordingBtn = null;
 
 function startRecording(field, btn) {
@@ -62,6 +70,9 @@ delayedShortcutBtn.addEventListener("click", () =>
 );
 cancelShortcutBtn.addEventListener("click", () =>
   startRecording("cancel_shortcut", cancelShortcutBtn),
+);
+recordShortcutBtn.addEventListener("click", () =>
+  startRecording("record_shortcut", recordShortcutBtn),
 );
 
 window.addEventListener("keydown", async (event) => {
@@ -112,6 +123,23 @@ captureDelayEl.addEventListener("change", async () => {
   const secs = Math.min(60, Math.max(1, parseInt(captureDelayEl.value, 10) || 3));
   settings = { ...settings, capture_delay_secs: secs };
   render();
+  await persist();
+});
+
+recordDelayEl.addEventListener("change", async () => {
+  const secs = Math.min(60, Math.max(0, parseInt(recordDelayEl.value, 10) || 0));
+  settings = { ...settings, record_delay_secs: secs };
+  render();
+  await persist();
+});
+
+recordCursorCheckbox.addEventListener("change", async () => {
+  settings = { ...settings, record_cursor: recordCursorCheckbox.checked };
+  await persist();
+});
+
+recordFpsSel.addEventListener("change", async () => {
+  settings = { ...settings, record_fps: parseInt(recordFpsSel.value, 10) };
   await persist();
 });
 
