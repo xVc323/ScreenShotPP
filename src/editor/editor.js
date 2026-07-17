@@ -569,8 +569,8 @@ export function createEditor(o = {}) {
         ["left", x, y + h / 2],
       ];
       for (const [side, handleX, handleY] of handles) {
-        const handle = new Konva.Circle({
-          name: "selection-handle",
+        veilLayer.add(new Konva.Circle({
+          name: "selection-handle-visual",
           side,
           x: handleX,
           y: handleY,
@@ -578,13 +578,24 @@ export function createEditor(o = {}) {
           fill: "#ffffff",
           stroke: "rgba(0, 0, 0, 0.45)",
           strokeWidth: 1,
+          listening: false,
+        }));
+        const hitTarget = new Konva.Circle({
+          name: "selection-handle",
+          side,
+          x: handleX,
+          y: handleY,
+          radius: HANDLE_RADIUS,
+          fill: "rgba(0, 0, 0, 0)",
+          stroke: "rgba(0, 0, 0, 0)",
+          strokeWidth: 1,
           hitStrokeWidth: HANDLE_HIT_STROKE,
         });
-        handle.on("pointerdown", (event) => {
+        hitTarget.on("pointerdown", (event) => {
           event.cancelBubble = true;
           selectionResizeSide = side;
         });
-        selectionHandleGroup.add(handle);
+        selectionHandleGroup.add(hitTarget);
       }
     }
     annotationLayer.draw();

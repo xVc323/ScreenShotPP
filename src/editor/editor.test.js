@@ -222,6 +222,29 @@ test("une ancre du Transformer superposée garde la priorité sur une poignée",
   );
 });
 
+test("les visuels restent au-dessus du voile sans intercepter les ancres du Transformer", () => {
+  createEditor({
+    container: "stage",
+    initialSelection: { x: 10, y: 10, width: 40, height: 40 },
+  });
+  const annotationLayer = stage.children[1];
+  const veilLayer = stage.children[2];
+  const handleGroup = annotationLayer.children.find((node) => node.attrs.name === "selection-handles");
+  const transformer = annotationLayer.children.find((node) => node instanceof FakeTransformer);
+  const visualHandles = veilLayer.children.filter((node) => node.attrs.name === "selection-handle-visual");
+
+  assert.deepEqual(visualHandles.map((node) => node.attrs.side), ["top", "right", "bottom", "left"]);
+  assert.deepEqual(veilLayer.children.slice(-4), visualHandles);
+  for (const handle of visualHandles) {
+    assert.equal(handle.attrs.listening, false);
+    assert.equal(handle.attrs.radius, 5);
+    assert.equal(handle.attrs.fill, "#ffffff");
+  }
+  assert.equal(handleGroup.children.length, 4);
+  assert.ok(handleGroup.children.every((node) => node.attrs.hitStrokeWidth === 16));
+  assert.ok(annotationLayer.children.indexOf(transformer) > annotationLayer.children.indexOf(handleGroup));
+});
+
 test("les poignées respectent le viewport et la taille minimale", () => {
   const editor = createEditor({
     container: "stage",
