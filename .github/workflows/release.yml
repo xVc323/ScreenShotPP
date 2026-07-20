@@ -17,7 +17,7 @@ jobs:
       - name: Fetch ffmpeg sidecar
         shell: bash
         run: scripts/fetch-ffmpeg.sh macos-arm
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -99,7 +99,7 @@ jobs:
       - name: Fetch ffmpeg sidecar
         shell: bash
         run: scripts/fetch-ffmpeg.sh windows
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
